@@ -26,6 +26,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPr
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -56,12 +57,14 @@ reticle.matrixAutoUpdate = false;
 reticle.visible = false;
 scene.add(reticle);
 
-const controller = renderer.xr.getController(0);
-scene.add(controller);
+const controllers = [renderer.xr.getController(0), renderer.xr.getController(1)];
+for (const xrController of controllers) scene.add(xrController);
+let activeController = controllers[0];
 const weaponHolder = new THREE.Group();
-weaponHolder.position.set(0.02, -0.07, -0.09);
+weaponHolder.position.set(0.025, -0.07, -0.09);
 weaponHolder.rotation.set(-0.05, Math.PI, 0);
-controller.add(weaponHolder);
+activeController.add(weaponHolder);
+const xrButtonState = new Map();
 
 const loader = new GLTFLoader();
 const textureLoader = new THREE.TextureLoader();
@@ -214,6 +217,30 @@ function getPlayerPosition(target = new THREE.Vector3()) {
   return camera.getWorldPosition(target);
 }
 
+function handLabel(controller) {
+  const hand = controller?.userData?.handedness;
+  if (hand === 'right') return 'اليمنى';
+  if (hand === 'left') return 'اليسرى';
+  return 'المختارة';
+}
+
+function setActiveController(controller, announce = false) {
+  if (!controller) return;
+  const changed = activeController !== controller || weaponHolder.parent !== controller;
+  activeController = controller;
+  controller.add(weaponHolder);
+  const leftHand = controller.userData.handedness === 'left';
+  weaponHolder.position.set(leftHand ? -0.025 : 0.025, -0.07, -0.09);
+  weaponHolder.rotation.set(-0.05, Math.PI, 0);
+  if (announce && changed && arenaPlaced) showMessage(`السلاح في اليد ${handLabel(controller)}`, 1100);
+}
+
+function cycleWeapon(controller = activeController) {
+  setActiveController(controller, false);
+  equipWeapon(state.weaponIndex + 1, true);
+  showMessage('تم تغيير السلاح', 750);
+}
+
 async function equipWeapon(index, resetAmmo = true) {
   state.weaponIndex = (index + weaponProfiles.length) % weaponProfiles.length;
   const profile = weaponProfiles[state.weaponIndex];
@@ -254,6 +281,10 @@ function createEnemy(position, index = 0) {
   root.rotation.y = Math.random() * Math.PI * 2;
   root.add(model);
   scene.add(root);
+  // Final world-space correction: keep the character's lowest visible point on the detected floor.
+  root.updateMatrixWorld(true);
+  const groundBox = new THREE.Box3().setFromObject(root);
+  if (Number.isFinite(groundBox.min.y)) root.position.y += position.y - groundBox.min.y;
 
   const mixer = new THREE.AnimationMixer(model);
   const enemy = {
@@ -476,7 +507,8 @@ function resetGame() {
 
 function placeArena(point) {
   placementPoint.copy(point);
-  placementPoint.y = point.y;
+  // Quest uses local-floor reference space, where Y=0 is the physical floor.
+  placementPoint.y = isAR ? 0 : point.y;
   arenaPlaced = true;
   reticle.visible = false;
   resetGame();
@@ -497,7 +529,8 @@ function updateEnemies(delta) {
     const distance = tmpVec2.length();
     if (distance > 0.001) tmpVec2.normalize();
 
-    enemy.root.rotation.y = Math.atan2(tmpVec2.x, tmpVec2.z) + Math.PI;
+    // The SWAT mesh faces +Z. Point that forward axis toward the player.
+    enemy.root.rotation.y = Math.atan2(tmpVec2.x, tmpVec2.z);
 
     if (distance > 2.45) {
       const advance = Math.min(enemy.speed * delta, Math.max(0, distance - 2.2));
@@ -565,8 +598,8 @@ function startPreview() {
 
 function setupARButton() {
   const button = ARButton.createButton(renderer, {
-    requiredFeatures: ['hit-test'],
-    optionalFeatures: ['dom-overlay', 'local-floor'],
+    requiredFeatures: ['hit-test', 'local-floor'],
+    optionalFeatures: ['dom-overlay'],
     domOverlay: { root: document.body }
   });
   button.textContent = 'دخول AR';
@@ -587,7 +620,8 @@ renderer.xr.addEventListener('sessionstart', async () => {
   document.body.classList.add('xr-session-active');
   ui.startPanel.classList.add('hidden');
   ui.modeLabel.textContent = 'AR مباشر';
-  showMessage('وجّه المؤشر الدائري إلى الأرض واضغط الزناد للتثبيت', 3600);
+  xrButtonState.clear();
+  showMessage('وجّه المؤشر للأرض واضغط الزناد. بعدها: الزناد إطلاق، Grip ينقل السلاح بين اليدين، A/X أو ضغط العصا يغيّر السلاح، B/Y تلقيم', 5200);
   const session = renderer.xr.getSession();
   if (session) await requestHitTest(session);
 });
@@ -607,23 +641,68 @@ renderer.xr.addEventListener('sessionend', () => {
   ui.modeLabel.textContent = 'وضع المعاينة';
 });
 
-controller.addEventListener('select', () => {
-  if (!isAR) return;
-  if (!arenaPlaced) {
-    if (reticle.visible) {
-      tmpVec.setFromMatrixPosition(reticle.matrix);
-      placeArena(tmpVec);
-    } else {
-      showMessage('حرّك الجهاز حتى يتم اكتشاف سطح الأرض');
+for (const xrController of controllers) {
+  xrController.addEventListener('connected', (event) => {
+    xrController.userData.inputSource = event.data;
+    xrController.userData.handedness = event.data.handedness || 'none';
+    // Prefer the right hand on connection, but either hand can take control at any time.
+    if (event.data.handedness === 'right') setActiveController(xrController, false);
+  });
+
+  xrController.addEventListener('disconnected', () => {
+    xrController.userData.inputSource = null;
+    xrController.userData.handedness = 'none';
+  });
+
+  xrController.addEventListener('squeeze', () => {
+    if (!isAR) return;
+    setActiveController(xrController, true);
+  });
+
+  xrController.addEventListener('select', () => {
+    if (!isAR) return;
+    setActiveController(xrController, arenaPlaced);
+    if (!arenaPlaced) {
+      if (reticle.visible) {
+        tmpVec.setFromMatrixPosition(reticle.matrix);
+        placeArena(tmpVec);
+      } else {
+        showMessage('حرّك الجهاز حتى يتم اكتشاف سطح الأرض');
+      }
+      return;
     }
-    return;
+    shoot();
+  });
+}
+
+function updateXRButtons() {
+  if (!isAR || !renderer.xr.isPresenting) return;
+  for (let index = 0; index < controllers.length; index++) {
+    const xrController = controllers[index];
+    const gamepad = xrController.userData.inputSource?.gamepad;
+    if (!gamepad?.buttons) continue;
+
+    const previous = xrButtonState.get(index) || { switchWeapon: false, reload: false };
+    // Quest Touch: thumbstick click or A/X cycles weapons; B/Y reloads.
+    const switchWeapon = Boolean(gamepad.buttons[3]?.pressed || gamepad.buttons[4]?.pressed);
+    const reloadPressed = Boolean(gamepad.buttons[5]?.pressed);
+
+    if (switchWeapon && !previous.switchWeapon && arenaPlaced && !gameEnded) {
+      setActiveController(xrController, true);
+      cycleWeapon(xrController);
+    }
+    if (reloadPressed && !previous.reload && arenaPlaced && !gameEnded) {
+      setActiveController(xrController, true);
+      reload();
+    }
+
+    xrButtonState.set(index, { switchWeapon, reload: reloadPressed });
   }
-  shoot();
-});
+}
 
 ui.previewButton.addEventListener('click', startPreview);
 ui.reloadButton.addEventListener('click', reload);
-ui.weaponButton.addEventListener('click', () => equipWeapon(state.weaponIndex + 1, true));
+ui.weaponButton.addEventListener('click', () => cycleWeapon(activeController));
 ui.restartButton.addEventListener('click', resetGame);
 
 document.addEventListener('pointerdown', (event) => {
@@ -646,6 +725,7 @@ addEventListener('resize', () => {
 function render(_time, frame) {
   const delta = Math.min(clock.getDelta(), 0.05);
   updateHitTest(frame);
+  updateXRButtons();
   updateEnemies(delta);
   renderer.render(scene, camera);
 }
