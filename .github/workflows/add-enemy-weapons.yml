@@ -113,7 +113,6 @@ function attachEnemyWeapon(enemy) {
             raise SystemExit('init audio block not found')
           s = s.replace(old, new, 1)
 
-          # Keep enemy weapon meshes out of the shooting hit list.
           old = """  for (const enemy of enemies) {
     if (!enemy.dead) enemy.model.traverse((obj) => { if (obj.isMesh) liveMeshes.push(obj); });
   }"""
