@@ -289,6 +289,7 @@ function createEnemy(position, index = 0) {
   const mixer = new THREE.AnimationMixer(model);
   const enemy = {
     root, model, mixer, action: null, animName: '', hp: 100, dead: false,
+    hitTilt: 0,
     speed: 0.62 + Math.min(state.wave, 6) * 0.035 + Math.random() * 0.12,
     nextAttack: performance.now() + 800 + Math.random() * 1200,
     strafeSign: index % 2 ? 1 : -1
@@ -343,21 +344,34 @@ function killEnemy(enemy) {
     enemy.action?.fadeOut(0.08);
     action.reset().setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
+    action.timeScale = 0.88 + Math.random() * 0.18;
     action.fadeIn(0.06).play();
     enemy.action = action;
   }
+
+  // Vary the final lean slightly and keep bodies visible for several seconds.
+  enemy.hitTilt += (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.08);
   setTimeout(() => {
     scene.remove(enemy.root);
     const idx = enemies.indexOf(enemy);
     if (idx >= 0) enemies.splice(idx, 1);
     startNextWaveIfReady();
-  }, 1900);
+  }, 7800 + Math.random() * 2200);
 }
 
-function hitEnemy(enemy, point) {
+function hitEnemy(enemy, point, shotDirection = null) {
   if (!enemy || enemy.dead) return;
   const profile = weaponProfiles[state.weaponIndex];
   enemy.hp -= profile.damage;
+
+  // Small directional body reaction so impacts do not look robotic.
+  if (shotDirection) {
+    const worldQuat = enemy.root.getWorldQuaternion(new THREE.Quaternion());
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(worldQuat);
+    const side = Math.sign(right.dot(shotDirection)) || (Math.random() > 0.5 ? 1 : -1);
+    enemy.hitTilt = side * (0.10 + Math.random() * 0.08);
+    enemy.root.position.addScaledVector(shotDirection, 0.025 + Math.random() * 0.02);
+  }
   showHitMarker();
   playSound('assets/audio/ui/hit_confirm.ogg', 0.5, 1.05);
   playSound('assets/audio/enemies/enemy_hit.ogg', 0.42, 0.94 + Math.random() * 0.15);
@@ -452,7 +466,7 @@ function shoot() {
   createMuzzleFlash(origin, direction);
   createTracer(origin, end);
 
-  if (hits.length) hitEnemy(hits[0].object.userData.enemyRef, hits[0].point);
+  if (hits.length) hitEnemy(hits[0].object.userData.enemyRef, hits[0].point, direction);
   if (state.ammo === 0 && state.reserve > 0) setTimeout(reload, 180);
 }
 
@@ -525,6 +539,8 @@ function updateEnemies(delta) {
     if (enemy.dead) continue;
 
     const pos = enemy.root.position;
+    enemy.root.rotation.z = THREE.MathUtils.damp(enemy.root.rotation.z, enemy.hitTilt || 0, 12, delta);
+    enemy.hitTilt = THREE.MathUtils.damp(enemy.hitTilt || 0, 0, enemy.dead ? 1.1 : 7.5, delta);
     tmpVec2.set(player.x - pos.x, 0, player.z - pos.z);
     const distance = tmpVec2.length();
     if (distance > 0.001) tmpVec2.normalize();
@@ -740,7 +756,7 @@ async function init() {
     ui.loadingText.textContent = 'تحميل شخصية SWAT...';
     enemyGltf = await loadGLTF(manifest.recommendedPrototype.enemy);
     enemyTemplate = enemyGltf.scene;
-    normalizeCharacter(enemyTemplate, 1.72);
+    normalizeCharacter(enemyTemplate, 1.20);
 
     ui.loadingText.textContent = 'تحميل المؤثرات والصوت...';
     muzzleTexture = await textureLoader.loadAsync(manifest.recommendedPrototype.muzzleFlash);
