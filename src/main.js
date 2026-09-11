@@ -551,7 +551,7 @@ function endGame() {
   gameEnded = true;
   ui.finalScore.textContent = state.score;
   ui.gameOver.classList.remove('hidden');
-  for (const enemy of enemies) enemy.mixer.timeScale = 0.2;
+  for (const enemy of enemies) { if (enemy.mixer) enemy.mixer.timeScale = 0.2; }
 }
 
 function resetGame() {
