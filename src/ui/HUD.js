@@ -22,10 +22,9 @@ function makeCanvas(w, h) {
  * texture.
  */
 export class HUD {
-  constructor({ xrApp, weaponSystem, wristHand = 'left' }) {
+  constructor({ xrApp, weaponSystem }) {
     this.xrApp = xrApp;
     this.weaponSystem = weaponSystem;
-    this.wristHand = wristHand;
     this.mode = 'select'; // 'select' | 'hud' | 'gameover'
     this._lastDraw = '';
 
@@ -90,7 +89,9 @@ export class HUD {
   }
 
   _ensurePanelAttached() {
-    const grip = this.xrApp.controllers[this.wristHand]?.grip;
+    // Always the off-hand (weaponSystem.switchHand), which tracks live if
+    // the player swaps which hand holds the weapon.
+    const grip = this.xrApp.controllers[this.weaponSystem.switchHand]?.grip;
     if (grip && this._attachedHand !== grip) {
       grip.add(this._panelAnchor);
       this._attachedHand = grip;
@@ -172,6 +173,11 @@ export class HUD {
   }
 
   _updatePanel(gameData) {
+    if (this.weaponSystem.calibrating) {
+      // Numbers change every frame while nudging, so skip the dirty-check.
+      this._redrawPanel(gameData);
+      return;
+    }
     let text;
     if (this.mode === 'select') {
       const def = weaponDef(this.weaponSystem.currentId);
@@ -202,7 +208,28 @@ export class HUD {
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#ffb347';
 
-    if (this.mode === 'select') {
+    if (this.weaponSystem.calibrating) {
+      const def = weaponDef(this.weaponSystem.currentId);
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText('CALIBRATING', 20, 14);
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillStyle = '#eef6ff';
+      ctx.fillText(def?.name || '', 20, 46);
+      ctx.font = '15px sans-serif';
+      ctx.fillStyle = '#9fb4c4';
+      ctx.fillText(`hand: ${this.weaponSystem.shootingHand}`, 20, 78);
+      ctx.font = 'bold 15px monospace';
+      ctx.fillStyle = '#5be07a';
+      const [line1, line2] = this.weaponSystem.calibrationReadout().split(' rot:');
+      ctx.fillText(line1, 20, 100);
+      ctx.fillText(`rot:${line2 || ''}`, 20, 118);
+      ctx.font = '14px sans-serif';
+      ctx.fillStyle = '#9fb4c4';
+      ctx.fillText('off-hand stick: move X/Z', 20, 148);
+      ctx.fillText('gun-hand stick: yaw / up-down', 20, 168);
+      ctx.fillText('A/B each hand: pitch / roll', 20, 188);
+      ctx.fillText('hold both triggers: exit', 20, 208);
+    } else if (this.mode === 'select') {
       const def = weaponDef(this.weaponSystem.currentId);
       ctx.font = 'bold 22px sans-serif';
       ctx.fillText('SELECT WEAPON', 20, 18);
@@ -211,8 +238,9 @@ export class HUD {
       ctx.fillText(def?.name || '', 20, 60);
       ctx.font = '18px sans-serif';
       ctx.fillStyle = '#9fb4c4';
-      ctx.fillText('Left stick: browse', 20, 130);
+      ctx.fillText('Stick or B: browse', 20, 130);
       ctx.fillText('Right trigger: confirm', 20, 156);
+      ctx.fillText('Stick-click: swap hands', 20, 182);
     } else if (this.mode === 'gameover') {
       ctx.font = 'bold 26px sans-serif';
       ctx.fillText('MISSION FAILED', 20, 18);
@@ -248,7 +276,8 @@ export class HUD {
       ctx.font = '16px sans-serif';
       ctx.fillStyle = '#9fb4c4';
       ctx.fillText('HEALTH', 20, 172);
-      ctx.fillText('Stick: switch  |  A: reload', 20, 198);
+      ctx.fillText('Stick/B: switch | A: reload', 20, 198);
+      ctx.fillText('Stick-click: swap hands', 20, 218);
     }
 
     this._panelTex.needsUpdate = true;

@@ -32,7 +32,11 @@ export const SOLDIER_TYPES = {
     label: 'Soldier',
     model: CHARACTERS.soldier,
     animated: true,
-    heightRange: [0.36, 0.4],
+    // Bumped toward (and slightly past) the top of the spec's 35-45cm
+    // range: player feedback was that ~38cm soldiers a couple meters out
+    // read as near-invisible in passthrough. Readability wins over the
+    // exact lower bound here.
+    heightRange: [0.42, 0.46],
     boneNames: {
       head: 'Head',
       chest: 'Chest',
@@ -62,7 +66,7 @@ export const SOLDIER_TYPES = {
     label: 'Elite Soldier',
     model: CHARACTERS.elite,
     animated: false,
-    heightRange: [0.42, 0.46],
+    heightRange: [0.46, 0.5],
     muzzleNodeNames: ['frontSIght_low', 'barrel_low', 'topGun_low'],
     boneNamesFallback: {
       head: 'mixamorig:Head_05',

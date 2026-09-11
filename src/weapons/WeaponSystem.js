@@ -46,14 +46,34 @@ export class WeaponSystem {
     this._reloading = false;
     this._reloadT = 0;
     this._stickArmed = true;
+    this._cycleBtnArmed = true;
+    this._swapBtnArmed = true;
+    this._pitchBtnArmed = true;
+    this._rollBtnArmed = true;
+    this._bothTriggersHeldT = 0;
+    this._calibrateArmed = true;
 
     this._recoilPos = new THREE.Vector3();
     this._recoilRot = 0;
+
+    // Live per-weapon grip overrides, editable in calibration mode; start
+    // as a copy of each WeaponDefs.js default so tuning never mutates the
+    // shared def. See enterCalibration() below.
+    this.gripOverrides = new Map();
+    this.calibrating = false;
 
     /** Set by the game: (origin:Vector3, dir:Vector3, maxDist:number) => {point, normal, enemy, zone} | null */
     this.onHitTest = null;
     /** Set by the game: (damage:number) fired on confirmed enemy hit, for score/hitmarker UI */
     this.onEnemyHit = null;
+  }
+
+  _gripFor(id) {
+    if (!this.gripOverrides.has(id)) {
+      const def = weaponDef(id);
+      this.gripOverrides.set(id, { pos: [...def.grip.pos], rotDeg: [...def.grip.rotDeg] });
+    }
+    return this.gripOverrides.get(id);
   }
 
   async preloadAll() {
@@ -64,13 +84,14 @@ export class WeaponSystem {
     const { scene } = await instantiateGLTF(def.model);
     scene.userData.muzzleLocal = autoOrientGun(scene, def.muzzleForwardBias);
 
+    const grip = this._gripFor(def.id);
     const root = new THREE.Group();
     root.add(scene);
-    root.position.set(...def.grip.pos);
+    root.position.set(...grip.pos);
     root.rotation.set(
-      THREE.MathUtils.degToRad(def.grip.rotDeg[0]),
-      THREE.MathUtils.degToRad(def.grip.rotDeg[1]),
-      THREE.MathUtils.degToRad(def.grip.rotDeg[2])
+      THREE.MathUtils.degToRad(grip.rotDeg[0]),
+      THREE.MathUtils.degToRad(grip.rotDeg[1]),
+      THREE.MathUtils.degToRad(grip.rotDeg[2])
     );
     root.scale.setScalar(def.scale);
     root.visible = false;
@@ -138,12 +159,21 @@ export class WeaponSystem {
   }
 
   update(dt, input) {
+    this._handleCalibrationToggle(dt, input);
+
     const grip = this.xrApp.controllers[this.shootingHand]?.grip;
     if (grip && this.currentModel && this.currentModel.parent !== grip) {
       grip.add(this.currentModel);
     }
 
+    if (this.calibrating) {
+      this._updateCalibration(dt, input);
+      this._syncState();
+      return;
+    }
+
     this._handleSwitching(input);
+    this._handleHandSwap(input);
 
     if (this._reloading) {
       const def = weaponDef(this.currentId);
@@ -166,17 +196,45 @@ export class WeaponSystem {
     this._syncState();
   }
 
+  /** Swaps which hand fires and which hand holds the switch/reload/HUD controls. */
+  swapHands() {
+    const oldShoot = this.shootingHand;
+    this.shootingHand = this.switchHand;
+    this.switchHand = oldShoot;
+    this.onHandsSwapped?.(this.shootingHand);
+  }
+
+  _handleHandSwap(input) {
+    // A dedicated button (not a hand-specific one) so it works no matter
+    // which hand is currently the "right"/shooting one.
+    const pressed = input.state.left.thumbstickPressed || input.state.right.thumbstickPressed;
+    if (!pressed) {
+      this._swapBtnArmed = true;
+      return;
+    }
+    if (this._swapBtnArmed) {
+      this.swapHands();
+      this._swapBtnArmed = false;
+    }
+  }
+
   _handleSwitching(input) {
     const s = input.state[this.switchHand];
     if (!s) return;
     const x = s.thumbstick.x;
-    if (Math.abs(x) < 0.3) this._stickArmed = true;
-    else if (this._stickArmed) {
+    const wantsCycle = Math.abs(x) >= 0.5 || s.bPressed;
+    if (!wantsCycle) {
+      this._stickArmed = true;
+      this._cycleBtnArmed = true;
+    } else if ((Math.abs(x) >= 0.5 && this._stickArmed) || (s.bPressed && this._cycleBtnArmed)) {
       // Cycling is always available (even while firing is locked, e.g.
       // during the pre-game weapon-select browse) so the player can try
-      // weapons in-hand before committing.
-      this.cycleWeapon(x > 0 ? 1 : -1);
+      // weapons in-hand before committing. Both the stick flick and an
+      // explicit button press work, since the stick alone wasn't reliably
+      // discoverable in practice.
+      this.cycleWeapon(x < 0 ? -1 : 1);
       this._stickArmed = false;
+      this._cycleBtnArmed = false;
     }
     if (s.aPressed && this._reloadArmed !== false) {
       this.startReload();
@@ -186,12 +244,88 @@ export class WeaponSystem {
     }
   }
 
+  // ---- live weapon-grip calibration -----------------------------------
+  // Since the exact grip offset/orientation for each glb couldn't be
+  // verified without a headset in the loop, this lets a player nudge the
+  // held weapon into place in real time and read back the numbers to bake
+  // into WeaponDefs.js. Hold both triggers ~0.6s to toggle it.
+
+  _handleCalibrationToggle(dt, input) {
+    const bothHeld = input.state.left.triggerDown && input.state.right.triggerDown;
+    // Suppress firing while both triggers are held, whether or not the
+    // 0.6s hold actually completes - otherwise every calibration-mode
+    // entry (or accidental double-squeeze) sprays a burst first.
+    this._suppressFire = bothHeld;
+    if (bothHeld) {
+      this._bothTriggersHeldT += dt;
+      if (this._bothTriggersHeldT > 0.6 && this._calibrateArmed) {
+        this.calibrating = !this.calibrating;
+        this._calibrateArmed = false;
+      }
+    } else {
+      this._bothTriggersHeldT = 0;
+      this._calibrateArmed = true;
+    }
+  }
+
+  _updateCalibration(dt, input) {
+    if (!this.currentId) return;
+    const grip = this._gripFor(this.currentId);
+    const off = input.state[this.switchHand];
+    const shoot = input.state[this.shootingHand];
+
+    const moveSpeed = 0.25; // m/s at full stick deflection
+    grip.pos[0] += off.thumbstick.x * moveSpeed * dt;
+    grip.pos[2] -= off.thumbstick.y * moveSpeed * dt;
+    grip.pos[1] -= shoot.thumbstick.y * moveSpeed * dt;
+
+    const yawSpeed = 90; // deg/s
+    grip.rotDeg[1] += shoot.thumbstick.x * yawSpeed * dt;
+
+    const step = 15;
+    if (off.aPressed || off.bPressed) {
+      if (this._pitchBtnArmed) {
+        grip.rotDeg[0] += off.aPressed ? -step : step;
+        this._pitchBtnArmed = false;
+      }
+    } else {
+      this._pitchBtnArmed = true;
+    }
+    if (shoot.aPressed || shoot.bPressed) {
+      if (this._rollBtnArmed) {
+        grip.rotDeg[2] += shoot.aPressed ? -step : step;
+        this._rollBtnArmed = false;
+      }
+    } else {
+      this._rollBtnArmed = true;
+    }
+
+    if (this.currentModel) {
+      this.currentModel.position.set(...grip.pos);
+      this.currentModel.rotation.set(
+        THREE.MathUtils.degToRad(grip.rotDeg[0]),
+        THREE.MathUtils.degToRad(grip.rotDeg[1]),
+        THREE.MathUtils.degToRad(grip.rotDeg[2])
+      );
+    }
+  }
+
+  /** Human-readable calibration readout for the HUD panel. */
+  calibrationReadout() {
+    if (!this.currentId) return '';
+    const g = this._gripFor(this.currentId);
+    const r = (n) => Math.round(n * 1000) / 1000;
+    const rd = (n) => Math.round(n);
+    return `pos:[${r(g.pos[0])}, ${r(g.pos[1])}, ${r(g.pos[2])}] rot:[${rd(g.rotDeg[0])}, ${rd(g.rotDeg[1])}, ${rd(g.rotDeg[2])}]`;
+  }
+
   _handleFiring(dt, input) {
     const s = input.state[this.shootingHand];
     if (!s) return;
     const def = weaponDef(this.currentId);
     const ammo = this.ammo.get(this.currentId) ?? 0;
 
+    if (this._suppressFire) return;
     if (this._reloading) return;
     if (this._lockUntil > 0) return;
 
@@ -273,13 +407,14 @@ export class WeaponSystem {
     this._recoilPos.z = damp(this._recoilPos.z, 0, recoverySpeed, dt);
     this._recoilRot = damp(this._recoilRot, 0, recoverySpeed, dt);
 
-    if (this.currentModel) {
-      this.currentModel.position.set(
-        weaponDef(this.currentId).grip.pos[0] + this._recoilPos.x,
-        weaponDef(this.currentId).grip.pos[1] + this._recoilPos.y,
-        weaponDef(this.currentId).grip.pos[2] - this._recoilPos.z
+    if (this.currentModel && this.currentId) {
+      const grip = this._gripFor(this.currentId);
+      this.currentModel.position.set(grip.pos[0] + this._recoilPos.x, grip.pos[1] + this._recoilPos.y, grip.pos[2] - this._recoilPos.z);
+      this.currentModel.rotation.set(
+        THREE.MathUtils.degToRad(grip.rotDeg[0]) - this._recoilRot,
+        THREE.MathUtils.degToRad(grip.rotDeg[1]),
+        THREE.MathUtils.degToRad(grip.rotDeg[2])
       );
-      this.currentModel.rotation.x = THREE.MathUtils.degToRad(weaponDef(this.currentId).grip.rotDeg[0]) - this._recoilRot;
     }
   }
 }
