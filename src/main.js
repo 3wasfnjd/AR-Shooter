@@ -5,6 +5,11 @@ const overlay = document.getElementById('overlay');
 const button = document.getElementById('enter-ar');
 const previewButton = document.getElementById('preview-link');
 const statusLine = document.getElementById('status-line');
+const touchControls = document.getElementById('touch-controls');
+
+function wireTouchButton(id, fn) {
+  document.getElementById(id)?.addEventListener('click', fn);
+}
 
 function setStatus(msg) {
   statusLine.textContent = msg;
@@ -51,6 +56,11 @@ async function boot() {
       await assetsReady;
       game.startPreview();
       overlay.classList.add('hidden');
+      touchControls.classList.remove('hidden');
+      wireTouchButton('btn-weapon-prev', () => game.weapons.cycleWeapon(-1));
+      wireTouchButton('btn-weapon-next', () => game.weapons.cycleWeapon(1));
+      wireTouchButton('btn-reload', () => game.weapons.startReload());
+      wireTouchButton('btn-swap', () => game.weapons.swapHands());
     } catch (err) {
       console.error(err);
       previewButton.disabled = false;

@@ -33,20 +33,29 @@ where your furniture actually is (see **Known simplifications** below).
 
 ## Desktop preview (no headset)
 
-`npm run dev` and open the page in any regular browser, then click
-**Preview in browser (no headset)** — this skips WebXR entirely and runs
-the exact same game (weapons, soldiers, waves, VFX, HUD) with a
-mouse-look + WASD fly-camera in front of a placeholder floor grid instead
+`npm run dev` and open the page in any regular browser (phone, tablet, or
+desktop), then tap/click **Preview in browser (no headset)** — this skips
+WebXR entirely and runs the exact same game (weapons, soldiers, waves,
+VFX, HUD) with a fly-camera in front of a placeholder floor grid instead
 of a real room. See `src/core/DesktopPreview.js`. Useful for iterating on
-anything visual without a Quest attached:
+anything visual without a Quest attached.
 
-- **Click the canvas** to lock the mouse for look-around; **Esc** to release.
-- **WASD** to move, **Space**/**Ctrl** up/down, **Shift** to run.
-- **Left mouse** = gun-hand trigger, **right mouse** = off-hand trigger
-  (both together = the calibration-mode gesture).
-- **Q/E** = cycle weapon, **R** = reload, **H** = swap hands.
-- **Arrow keys** = gun-hand stick (yaw/height in calibration), **T/G** =
-  off-hand stick Y, **R/F** and **[ ]** = the two hands' A/B buttons.
+On-screen buttons appear automatically (work by touch or mouse click):
+
+- **Joystick** (bottom-left): move/strafe.
+- **Drag anywhere else on screen**: look around.
+- **FIRE** (bottom-right, big red button): hold to fire.
+- **◀ WPN / WPN ▶**: cycle weapon. **RELOAD**. **SWAP HANDS**: switch
+  which hand holds the gun.
+- **▲ / ▼** (top-right): fly up/down.
+
+A keyboard also works alongside the on-screen controls: **WASD** to move,
+**Space**/**Ctrl** up/down, **Shift** to run, **left mouse** = gun-hand
+trigger, **right mouse** = off-hand trigger (both together = the
+calibration-mode gesture), **Q/E** = cycle weapon, **R** = reload, **H** =
+swap hands, **arrow keys** = gun-hand stick (yaw/height in calibration),
+**T/G** = off-hand stick Y, **R/F** and **[ ]** = the two hands' A/B
+buttons.
 
 This is also how the soldier-scale and enemy-weapon-attachment bugs
 described below were actually found and confirmed fixed — `window.__game`

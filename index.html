@@ -80,6 +80,107 @@
       }
       #preview-link:hover { border-color: #ff9d2e; color: #ffb347; }
       #overlay.hidden { display: none; }
+
+      /* On-screen controls for the no-headset preview: touch AND mouse both
+         work through these (pointer events), so this doubles as a phone
+         control scheme and a "no keyboard shortcuts to remember" desktop one. */
+      #touch-controls {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        pointer-events: none;
+        font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #touch-controls.hidden { display: none; }
+      #tc-hint {
+        position: absolute;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #cfe0ec;
+        background: rgba(5, 7, 10, 0.55);
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+      }
+      #joystick {
+        position: absolute;
+        left: 26px;
+        bottom: 26px;
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.08);
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        pointer-events: auto;
+        touch-action: none;
+      }
+      #joystick-knob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 52px;
+        height: 52px;
+        margin: -26px 0 0 -26px;
+        border-radius: 50%;
+        background: rgba(255, 157, 46, 0.85);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      }
+      #tc-vertical {
+        position: absolute;
+        right: 22px;
+        top: 46px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        pointer-events: auto;
+      }
+      #tc-buttons {
+        position: absolute;
+        right: 22px;
+        bottom: 22px;
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        pointer-events: auto;
+      }
+      #tc-weapon-col {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+      }
+      #tc-weapon-row { display: flex; gap: 8px; }
+      .tc-btn {
+        background: rgba(20, 26, 32, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: #e8f0f6;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      .tc-btn:active { background: rgba(255, 157, 46, 0.35); border-color: #ff9d2e; }
+      #btn-fire {
+        width: 92px;
+        height: 92px;
+        border-radius: 50%;
+        background: rgba(224, 60, 20, 0.65);
+        border: 2px solid rgba(255, 140, 90, 0.85);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        cursor: pointer;
+      }
+      #btn-fire:active { background: rgba(255, 90, 40, 0.9); }
     </style>
   </head>
   <body>
@@ -95,6 +196,27 @@
       <div id="status-line"></div>
       <button id="preview-link">Preview in browser (no headset)</button>
     </div>
+
+    <div id="touch-controls" class="hidden">
+      <div id="tc-hint">Drag anywhere to look around</div>
+      <div id="joystick"><div id="joystick-knob"></div></div>
+      <div id="tc-vertical">
+        <button id="btn-up" class="tc-btn">▲</button>
+        <button id="btn-down" class="tc-btn">▼</button>
+      </div>
+      <div id="tc-buttons">
+        <div id="tc-weapon-col">
+          <div id="tc-weapon-row">
+            <button id="btn-weapon-prev" class="tc-btn">◀ WPN</button>
+            <button id="btn-weapon-next" class="tc-btn">WPN ▶</button>
+          </div>
+          <button id="btn-reload" class="tc-btn">RELOAD</button>
+          <button id="btn-swap" class="tc-btn">SWAP HANDS</button>
+        </div>
+        <button id="btn-fire">FIRE</button>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
