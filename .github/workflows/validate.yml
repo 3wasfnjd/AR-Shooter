@@ -17,6 +17,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check src/main.js
+          node --check src/elite-procedural.js
           node --check src/elite-rig.js
       - name: Check required runtime files
         shell: bash
@@ -29,6 +30,9 @@ jobs:
           test -s assets/characters/humans/swat.glb
           test -s assets/characters/humans/swat_elite_quest.glb
           test -s assets/weapons/west/Rifle_Assault_West.glb
+          grep -q "TOY_SOLDIER_HEIGHT = 0.42" src/main.js
+          grep -q "updateEliteMotion" src/main.js
+          grep -q "position.y = enemy.floorY" src/main.js
           python3 -m json.tool assets/config/assets.json >/dev/null
           python3 -m json.tool assets/config/rig_metadata.json >/dev/null
           echo "Static validation passed."
