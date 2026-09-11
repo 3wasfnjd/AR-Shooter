@@ -1,0 +1,99 @@
+{
+  "characters": {
+    "humans": [
+      "assets/characters/humans/casual-character.glb",
+      "assets/characters/humans/swat.glb",
+      "assets/characters/humans/worker.glb"
+    ],
+    "minions": [
+      "assets/characters/minions/minion-a01.glb",
+      "assets/characters/minions/minion-a02.glb",
+      "assets/characters/minions/minion-b01.glb",
+      "assets/characters/minions/minion-b02.glb",
+      "assets/characters/minions/minion-c01.glb",
+      "assets/characters/minions/minion-c02.glb",
+      "assets/characters/minions/minion-d01.glb",
+      "assets/characters/minions/minion-d02.glb"
+    ]
+  },
+  "weapons": {
+    "west": [
+      "assets/weapons/west/Pistol_Compact_West.glb",
+      "assets/weapons/west/Pistol_Full_West.glb",
+      "assets/weapons/west/Rifle_Assault_West.glb",
+      "assets/weapons/west/Rifle_Battle_West.glb",
+      "assets/weapons/west/SMG_Compact_West.glb",
+      "assets/weapons/west/SMG_Full_West.glb",
+      "assets/weapons/west/Shotgun_Auto_West.glb",
+      "assets/weapons/west/Shotgun_Pump_West.glb",
+      "assets/weapons/west/Sniper_Material_West.glb",
+      "assets/weapons/west/Sniper_Rifle_West.glb"
+    ],
+    "east": [
+      "assets/weapons/east/Pistol_Compact_East.glb",
+      "assets/weapons/east/Pistol_Full_East.glb",
+      "assets/weapons/east/Rifle_Assault_East.glb",
+      "assets/weapons/east/Rifle_Battle_East.glb",
+      "assets/weapons/east/SMG_Compact_East.glb",
+      "assets/weapons/east/SMG_Full_East.glb",
+      "assets/weapons/east/Shotgun_Auto_East.glb",
+      "assets/weapons/east/Shotgun_Pump_East.glb",
+      "assets/weapons/east/Sniper_Material_East.glb",
+      "assets/weapons/east/Sniper_Rifle_East.glb"
+    ]
+  },
+  "audio": {
+    "weapons": [
+      "assets/audio/weapons/empty_click.ogg",
+      "assets/audio/weapons/pistol_fire.ogg",
+      "assets/audio/weapons/reload_pistol.ogg",
+      "assets/audio/weapons/reload_rifle.ogg",
+      "assets/audio/weapons/rifle_fire.ogg",
+      "assets/audio/weapons/shotgun_fire.ogg",
+      "assets/audio/weapons/shotgun_pump.ogg",
+      "assets/audio/weapons/sniper_fire.ogg"
+    ],
+    "footsteps": [
+      "assets/audio/footsteps/Fantozzi-SandL1.ogg",
+      "assets/audio/footsteps/Fantozzi-SandL2.ogg",
+      "assets/audio/footsteps/Fantozzi-SandL3.ogg",
+      "assets/audio/footsteps/Fantozzi-SandR1.ogg",
+      "assets/audio/footsteps/Fantozzi-SandR2.ogg",
+      "assets/audio/footsteps/Fantozzi-SandR3.ogg",
+      "assets/audio/footsteps/Fantozzi-StoneL1.ogg",
+      "assets/audio/footsteps/Fantozzi-StoneL2.ogg",
+      "assets/audio/footsteps/Fantozzi-StoneL3.ogg",
+      "assets/audio/footsteps/Fantozzi-StoneR1.ogg",
+      "assets/audio/footsteps/Fantozzi-StoneR2.ogg",
+      "assets/audio/footsteps/Fantozzi-StoneR3.ogg"
+    ],
+    "enemies": [
+      "assets/audio/enemies/enemy_death.ogg",
+      "assets/audio/enemies/enemy_hit.ogg"
+    ],
+    "ui": [
+      "assets/audio/ui/hit_confirm.ogg"
+    ]
+  },
+  "effects": [
+    "assets/effects/bullet_impact.svg",
+    "assets/effects/muzzle_flash.svg",
+    "assets/effects/smoke.svg",
+    "assets/effects/tracer.svg"
+  ],
+  "ui": [
+    "assets/ui/crosshair.svg",
+    "assets/ui/hit_marker.svg"
+  ],
+  "recommendedPrototype": {
+    "enemy": "assets/characters/humans/swat.glb",
+    "weapon": "assets/weapons/west/Rifle_Assault_West.glb",
+    "gunshot": "assets/audio/weapons/rifle_fire.ogg",
+    "reload": "assets/audio/weapons/reload_rifle.ogg",
+    "muzzleFlash": "assets/effects/muzzle_flash.svg",
+    "smoke": "assets/effects/smoke.svg",
+    "impact": "assets/effects/bullet_impact.svg",
+    "crosshair": "assets/ui/crosshair.svg",
+    "hitMarker": "assets/ui/hit_marker.svg"
+  }
+}
