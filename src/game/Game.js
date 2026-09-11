@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { XRApp } from '../core/XRApp.js';
 import { InputManager } from '../core/InputManager.js';
+import { DesktopInput } from '../core/DesktopPreview.js';
 import { AudioManager } from '../audio/AudioManager.js';
 import { EffectsSystem } from '../vfx/EffectsSystem.js';
 import { PortalEffect } from '../vfx/PortalEffect.js';
@@ -78,9 +79,19 @@ export class Game {
     this.hud.showWeaponSelect();
   }
 
+  /** No-headset fallback: see DesktopPreview.js. Lets weapons/soldiers/VFX be iterated on from an ordinary browser. */
+  startPreview() {
+    this.desktopInput = new DesktopInput(this.xrApp.renderer);
+    this.input = this.desktopInput;
+    this.xrApp.startDesktopPreview();
+    this.mode = 'weaponSelect';
+    this.hud.showWeaponSelect();
+  }
+
   // ---- per-frame --------------------------------------------------
 
   _update(dt) {
+    if (this.desktopInput) this.desktopInput.updateCamera(this.xrApp.camera, dt);
     this.input.update();
     // Controller local transforms are refreshed by WebXRManager before this
     // callback runs, but matrixWorld propagation normally only happens

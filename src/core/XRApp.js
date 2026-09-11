@@ -146,6 +146,55 @@ export class XRApp {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /**
+   * No-headset fallback render loop for desktop iteration (see
+   * DesktopPreview.js): skips WebXR entirely, drives the camera and a pair
+   * of fake controller-grip anchors manually instead of from real XR pose
+   * data, and renders via requestAnimationFrame. A floor grid + a few
+   * boxes stand in for a real passthrough room so scale is still readable.
+   */
+  startDesktopPreview() {
+    this.camera.position.set(0, 1.6, 0);
+    this.camera.rotation.set(0, 0, 0);
+
+    const grid = new THREE.GridHelper(10, 20, 0x88aacc, 0x334455);
+    this.scene.add(grid);
+    const floorMat = new THREE.MeshBasicMaterial({ color: 0x11161c, transparent: true, opacity: 0.35 });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    this.scene.add(floor);
+
+    const boxMat = new THREE.MeshStandardMaterial({ color: 0x5a4632 });
+    const furniture = [
+      { size: [1.2, 0.45, 0.6], pos: [-1.4, 0.225, -0.8] }, // "coffee table"
+      { size: [1.8, 0.85, 0.9], pos: [1.6, 0.425, -1.6] } // "sofa"
+    ];
+    for (const f of furniture) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(...f.size), boxMat);
+      mesh.position.set(...f.pos);
+      this.scene.add(mesh);
+    }
+
+    const anchors = {
+      right: new THREE.Object3D(),
+      left: new THREE.Object3D()
+    };
+    anchors.right.position.set(0.22, -0.22, -0.4);
+    anchors.right.rotation.set(-0.15, 0, 0);
+    anchors.left.position.set(-0.2, -0.25, -0.35);
+    this.camera.add(anchors.right, anchors.left);
+    this.controllers.right.grip = anchors.right;
+    this.controllers.left.grip = anchors.left;
+
+    const animate = (time) => {
+      requestAnimationFrame(animate);
+      const dt = Math.min(this.clock.getDelta(), 0.05);
+      for (const cb of this.updateCallbacks) cb(dt, null);
+      this.renderer.render(this.scene, this.camera);
+    };
+    requestAnimationFrame(animate);
+  }
+
   _onResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();

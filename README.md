@@ -1,7 +1,7 @@
 # Miniature Ops — Quest 3 AR Shooter
 
 A WebXR (`immersive-ar`) passthrough shooter built with Three.js: realistic
-~35–45cm miniature soldiers breach your real room through tactical portals
+~50–60cm miniature soldiers breach your real room through tactical portals
 and attack from multiple directions while you fight back with five distinct
 hand-held weapons. Built entirely on the assets already in `assets/`.
 
@@ -30,6 +30,28 @@ open that URL in the Quest Browser.
 Stand in a clear area with a few meters of open floor before entering AR —
 the game does not (yet) query Quest's Scene/Room mesh, so it doesn't know
 where your furniture actually is (see **Known simplifications** below).
+
+## Desktop preview (no headset)
+
+`npm run dev` and open the page in any regular browser, then click
+**Preview in browser (no headset)** — this skips WebXR entirely and runs
+the exact same game (weapons, soldiers, waves, VFX, HUD) with a
+mouse-look + WASD fly-camera in front of a placeholder floor grid instead
+of a real room. See `src/core/DesktopPreview.js`. Useful for iterating on
+anything visual without a Quest attached:
+
+- **Click the canvas** to lock the mouse for look-around; **Esc** to release.
+- **WASD** to move, **Space**/**Ctrl** up/down, **Shift** to run.
+- **Left mouse** = gun-hand trigger, **right mouse** = off-hand trigger
+  (both together = the calibration-mode gesture).
+- **Q/E** = cycle weapon, **R** = reload, **H** = swap hands.
+- **Arrow keys** = gun-hand stick (yaw/height in calibration), **T/G** =
+  off-hand stick Y, **R/F** and **[ ]** = the two hands' A/B buttons.
+
+This is also how the soldier-scale and enemy-weapon-attachment bugs
+described below were actually found and confirmed fixed — `window.__game`
+is exposed for poking at from the browser console (e.g.
+`__game.enemies.soldiers[0].model.scale`).
 
 ## Controls
 
@@ -74,13 +96,16 @@ do all five in one session). Hold both triggers again to exit.
 ## How this maps to the brief
 
 - **Miniature realistic soldiers, not cartoonish/robotic/full-size** —
-  `assets/characters/humans/swat.glb` is scaled at runtime (via bounding-box
-  measurement, not a hardcoded factor, so it's robust to the source asset's
-  authored units) to 0.42–0.46m; `swat_elite_quest.glb` to 0.46–0.50m
-  (nudged above the brief's 35-45cm after on-device testing showed smaller
-  figures read as near-invisible a couple meters out in passthrough), and
-  the engagement/spawn radius was tightened to keep them close enough to
-  stay readable. See `src/enemies/SoldierTypes.js` and `EnemyManager`.
+  `assets/characters/humans/swat.glb` is scaled at runtime, from a bone
+  landmark measurement (see **Known simplifications**, not a hardcoded
+  factor, so it's robust to the source asset's authored units), to
+  0.50–0.55m; `swat_elite_quest.glb` to 0.55–0.60m (nudged above the
+  brief's 35-45cm after on-device feedback that smaller figures were hard
+  to spot; the desktop preview also surfaced a real geometry factor -
+  standing eye height versus a floor-level target means close range
+  demands a steep, unnatural downward look angle, so engagement distance
+  was widened back out rather than tightened further). See
+  `src/enemies/SoldierTypes.js` and `EnemyManager`.
 - **Both SWAT characters used, Elite reads as higher-tier** — `swat.glb` is
   the fully animated rank-and-file soldier; `swat_elite_quest.glb` (which
   ships as a static, un-animated Sketchfab mesh with its rifle fused into
@@ -91,7 +116,7 @@ do all five in one session). Hold both triggers again to exit.
   damage, tight spread) — `src/weapons/WeaponDefs.js` tunes fire rate,
   recoil curve, spread, haptics, and VFX per weapon independently.
 - **Enemies visibly carry correctly-proportioned weapons** — the enemy
-  rifle glb is parented directly onto the soldier's `Wrist.R` bone at
+  rifle glb is parented directly onto the soldier's `WristR` bone at
   identity scale, so it inherits the same uniform scale-down factor as the
   body — see the comment in `Soldier._attachWeapon`.
 - **Realistic, non-robotic movement** — driven by `swat.glb`'s real
@@ -167,6 +192,28 @@ building this without a live on-device preview or Quest Scene API access:
   soldiers appear to walk backwards toward the player, `facingOffsetDeg` in
   `src/enemies/SoldierTypes.js` is the equivalent knob for that (no
   in-headset tool for it yet).
+- **`Box3.setFromObject()` silently lies about a `SkinnedMesh`'s size** —
+  this was a real, now-fixed bug, not a caveat: it measures the raw
+  geometry vertex buffer, which for a skinned character lives in an
+  unposed reference space that bone matrices deform at render time. It
+  has nothing to do with final on-screen size. This made the enemy scale
+  factor ~100x too small (soldiers rendering at a few millimeters despite
+  a correct-looking `heightRange`) until it was caught with the desktop
+  preview + a manual bone-position bounding-box dump. The fix,
+  `measureRigHeight`/`scaleRigToHeight` in `src/utils/math.js`, measures
+  distance between named bone/landmark nodes (skull-top to toe-tip)
+  instead, which isn't skinning-dependent. If a future character asset
+  renders at the wrong scale, suspect this before anything else.
+- **glTF strips `.`/`:` from node names on load.** `assets/config/
+  rig_metadata.json` documents bone names with separators (Blender/Mixamo
+  convention: `"UpperArm.L"`, `"mixamorig:Head_05"`), but the live-loaded
+  glb has them stripped (`"UpperArmL"`, `"mixamorigHead_05"`) — confirmed
+  by traversing a loaded instance, not assumed. This silently broke the
+  enemy weapon-hand attachment (wrong bone name → `_attachWeapon` found
+  nothing → no exception, no visible weapon) and 4 of 7 hurtboxes on the
+  regular soldier. `SoldierTypes.js` now uses the real stripped names and
+  says so in a comment; trust that file over `rig_metadata.json` if they
+  disagree again.
 - **`swat_elite_quest.glb` ships with zero animation clips** (it's a static
   bind-pose Sketchfab mesh with its rifle fused into the geometry, per
   `assets/config/model_metadata.json`). Rather than treat this as broken,

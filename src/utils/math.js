@@ -19,22 +19,51 @@ export function dampAngle(current, target, lambda, dt) {
   return current + diff * (1 - Math.exp(-lambda * dt));
 }
 
-/** Returns the bounding-box world-space height of an object3D. */
-export function measureHeight(object3d) {
-  const box = new THREE.Box3().setFromObject(object3d);
-  return box.max.y - box.min.y;
+// NOTE: there used to be a Box3.setFromObject()-based measureHeight/
+// scaleToHeight here. That's correct for a static mesh but silently wrong
+// for a SkinnedMesh: the geometry's vertex buffer lives in an unposed
+// reference space that skinning deforms at render time via bone matrices,
+// which Box3.setFromObject never applies - it measured raw vertex data
+// with no relation to final on-screen size (confirmed on swat.glb: it
+// computed a scale factor making the character render at ~6mm instead of
+// the intended ~50cm). Bones themselves aren't skinned meshes, so their
+// world positions are a reliable stand-in - see measureRigHeight below,
+// used for every skinned character instead.
+
+const _rigTop = new THREE.Vector3();
+const _rigBottom = new THREE.Vector3();
+/**
+ * Height (world-space Y) between a top landmark bone/node (e.g. the top of
+ * the skull) and the lowest of one or more bottom landmark bones (e.g.
+ * toe-tip nodes, tried in order so an asymmetric bind pose still works).
+ * `object3d` may be parented or not; call after any pose is applied.
+ */
+export function measureRigHeight(object3d, topName, bottomNames) {
+  const top = object3d.getObjectByName(topName);
+  if (!top) return 0;
+  top.getWorldPosition(_rigTop);
+  return _rigTop.y - lowestWorldY(object3d, bottomNames);
 }
 
-export function boundingBoxOf(object3d) {
-  return new THREE.Box3().setFromObject(object3d);
+/** Lowest world-space Y among the named nodes (first match per name; skips missing ones). */
+export function lowestWorldY(object3d, names) {
+  let bottomY = Infinity;
+  for (const name of names) {
+    const node = object3d.getObjectByName(name);
+    if (!node) continue;
+    node.getWorldPosition(_rigBottom);
+    bottomY = Math.min(bottomY, _rigBottom.y);
+  }
+  return Number.isFinite(bottomY) ? bottomY : 0;
 }
 
-/** Uniformly scales `object3d` so its bounding-box height equals targetHeight (meters). */
-export function scaleToHeight(object3d, targetHeight) {
-  const height = measureHeight(object3d);
+/** Uniformly scales a skinned `object3d` so measureRigHeight(...) equals targetHeight (meters). */
+export function scaleRigToHeight(object3d, targetHeight, topName, bottomNames) {
+  object3d.updateMatrixWorld(true);
+  const height = measureRigHeight(object3d, topName, bottomNames);
   if (height > 1e-5) {
-    const s = targetHeight / height;
-    object3d.scale.multiplyScalar(s);
+    object3d.scale.multiplyScalar(targetHeight / height);
+    object3d.updateMatrixWorld(true);
   }
   return object3d;
 }

@@ -4,7 +4,7 @@ import { SOLDIER_TYPES } from './SoldierTypes.js';
 import { randRange } from '../utils/math.js';
 
 const COVER_POINT_COUNT = 7;
-const COVER_RADIUS_RANGE = [0.8, 1.6];
+const COVER_RADIUS_RANGE = [1.4, 2.6];
 
 /**
  * Owns the live soldier roster: spawning (via PortalEffect), per-frame AI
@@ -23,11 +23,17 @@ export class EnemyManager {
     this.soldiers = [];
     this.coverPoints = this._makeCoverPoints();
 
-    // Kept tight on purpose: at miniature scale, soldiers standing a
-    // couple meters away read as barely-visible specks in passthrough.
-    // Closer engagement range keeps them a readable, threatening size.
-    this.engagementMin = 0.5;
-    this.engagementMax = 1.0;
+    // This went too tight in an earlier pass on the (wrong) assumption
+    // that "closer = more visible". Using the desktop preview to actually
+    // look at it: a standing eye height (~1.6m) versus a ~0.5m floor-level
+    // target means the downward look angle needed is atan((1.6-0.3)/d) -
+    // at 0.5-1.0m that's 50-70 degrees below horizontal, well outside a
+    // natural forward gaze. Backing the range back out reduces that angle
+    // to something closer to a natural "glance down" (~25-35deg at
+    // 1.9-2.8m) while the earlier size bump + forward-biased wave 1 +
+    // threat arrow + contact ping carry the rest of the readability fix.
+    this.engagementMin = 1.5;
+    this.engagementMax = 2.4;
 
     this.onPlayerDamaged = null; // (amount) => void
     this.onSoldierKilled = null; // (soldier) => void
