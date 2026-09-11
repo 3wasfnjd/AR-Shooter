@@ -15,7 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check JavaScript syntax
-        run: node --check src/main.js
+        run: |
+          node --check src/main.js
+          node --check src/elite-rig.js
       - name: Check required runtime files
         shell: bash
         run: |
@@ -23,7 +25,10 @@ jobs:
           test -s index.html
           test -s styles.css
           test -s assets/config/assets.json
+          test -s assets/config/rig_metadata.json
           test -s assets/characters/humans/swat.glb
+          test -s assets/characters/humans/swat_elite_quest.glb
           test -s assets/weapons/west/Rifle_Assault_West.glb
           python3 -m json.tool assets/config/assets.json >/dev/null
+          python3 -m json.tool assets/config/rig_metadata.json >/dev/null
           echo "Static validation passed."
