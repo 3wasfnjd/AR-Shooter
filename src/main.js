@@ -414,8 +414,8 @@ function getShotRay() {
   const origin = new THREE.Vector3();
   const direction = new THREE.Vector3(0, 0, -1);
   if (renderer.xr.isPresenting) {
-    controller.getWorldPosition(origin);
-    controller.getWorldQuaternion(tmpQuat);
+    activeController.getWorldPosition(origin);
+    activeController.getWorldQuaternion(tmpQuat);
     direction.applyQuaternion(tmpQuat).normalize();
   } else {
     camera.getWorldPosition(origin);
