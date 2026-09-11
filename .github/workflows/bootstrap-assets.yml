@@ -17,35 +17,33 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install audio encoder
+      - name: Install OGG encoder
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
 
-      - name: Fetch asset sources
+      - name: Fetch curated CC0 asset sources
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf /tmp/fps /tmp/gobkit /tmp/funnel
           git clone --depth 1 --filter=blob:none --sparse https://github.com/petroulacl/fps-asset-kit.git /tmp/fps
           git -C /tmp/fps sparse-checkout set --skip-checks \
             'weapons/flat_guns_west/Flat Guns West/GLB' \
             'weapons/flat_guns_east/Flat Guns East/GLB' \
-            'sfx/gunshots' \
             'sfx/footsteps/Fantozzi-footsteps/ogg'
           git clone --depth 1 https://github.com/Ariescar/gobkit-free-assets.git /tmp/gobkit
           git clone --depth 1 https://github.com/euuuuuuan/fatal-funnel-public.git /tmp/funnel
 
-      - name: Assemble runtime pack
+      - name: Assemble models and footsteps
         shell: bash
         run: |
           set -euo pipefail
           rm -rf assets
-          mkdir -p assets/{characters/{humans,minions},weapons/{west,east},audio/{weapons,footsteps},effects,ui,config,licenses}
+          mkdir -p assets/{characters/{humans,minions},weapons/{west,east},audio/{weapons,footsteps,enemies,ui},effects,ui,config,licenses}
 
           cp '/tmp/fps/weapons/flat_guns_west/Flat Guns West/GLB/'*.glb assets/weapons/west/
           cp '/tmp/fps/weapons/flat_guns_east/Flat Guns East/GLB/'*.glb assets/weapons/east/
-          ffmpeg -hide_banner -loglevel error -y -i /tmp/fps/sfx/gunshots/game_gunshot.wav assets/audio/weapons/game_gunshot.ogg
-          ffmpeg -hide_banner -loglevel error -y -i /tmp/fps/sfx/gunshots/sniper_shot.wav assets/audio/weapons/sniper_shot.ogg
           cp '/tmp/fps/sfx/footsteps/Fantozzi-footsteps/ogg/'*.ogg assets/audio/footsteps/
           cp /tmp/fps/README.md assets/licenses/FPS_ASSET_KIT_SOURCE_README.md
 
@@ -57,69 +55,225 @@ jobs:
           cp /tmp/funnel/packages/renderer/assets/models/quaternius-men/worker.glb assets/characters/humans/worker.glb
           cp /tmp/funnel/CREDITS.md assets/licenses/FATAL_FUNNEL_CREDITS.md
 
-      - name: Generate effects, HUD and manifests
+      - name: Generate original game audio
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ar-audio
+          python3 - <<'PY'
+          import math, random, wave, struct
+          from pathlib import Path
+
+          SR = 44100
+          OUT = Path('/tmp/ar-audio')
+
+          def write_wav(name, samples):
+              peak = max(1e-9, max(abs(x) for x in samples))
+              scale = 0.88 / peak
+              frames = b''.join(struct.pack('<h', max(-32767, min(32767, int(x * scale * 32767)))) for x in samples)
+              with wave.open(str(OUT / f'{name}.wav'), 'wb') as w:
+                  w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes(frames)
+
+          def gunshot(name, duration, seed, noise_decay, body_freq, body_decay, crack_freq, tail=0.0):
+              rng = random.Random(seed)
+              n = int(SR * duration)
+              data = []
+              prev = 0.0
+              for i in range(n):
+                  t = i / SR
+                  white = rng.uniform(-1.0, 1.0)
+                  # mild low-pass component gives the blast some body without huge bass
+                  prev = 0.72 * prev + 0.28 * white
+                  noise = (0.68 * white + 0.32 * prev) * math.exp(-noise_decay * t)
+                  body = 0.55 * math.sin(2 * math.pi * body_freq * t) * math.exp(-body_decay * t)
+                  crack = 0.28 * math.sin(2 * math.pi * crack_freq * t) * math.exp(-58 * t)
+                  rumble = tail * math.sin(2 * math.pi * 52 * t) * math.exp(-7 * t)
+                  attack = min(1.0, t / 0.0015)
+                  data.append(math.tanh((noise + body + crack + rumble) * 1.7) * attack)
+              write_wav(name, data)
+
+          def mechanical(name, duration, seed, events, scrape=False):
+              rng = random.Random(seed)
+              n = int(SR * duration)
+              data = [0.0] * n
+              for event_t, amp, freq in events:
+                  start = int(event_t * SR)
+                  length = min(int(0.065 * SR), n - start)
+                  for j in range(max(0, length)):
+                      tt = j / SR
+                      click = rng.uniform(-1, 1) * math.exp(-70 * tt)
+                      ring = math.sin(2 * math.pi * freq * tt) * math.exp(-45 * tt)
+                      data[start+j] += amp * (0.72 * click + 0.28 * ring)
+              if scrape:
+                  a, b = int(.12*SR), min(n, int(.38*SR))
+                  lp = 0.0
+                  for i in range(a, b):
+                      x = rng.uniform(-1, 1)
+                      lp = .88*lp + .12*x
+                      env = math.sin(math.pi * (i-a) / max(1, b-a))
+                      data[i] += .22 * lp * env
+              write_wav(name, data)
+
+          gunshot('pistol_fire', 0.24, 1001, 23, 145, 16, 1900)
+          gunshot('rifle_fire', 0.19, 1002, 30, 175, 20, 2400)
+          gunshot('shotgun_fire', 0.52, 1003, 10, 82, 8, 1250, tail=.34)
+          gunshot('sniper_fire', 0.42, 1004, 13, 112, 10, 3000, tail=.22)
+          mechanical('reload_pistol', .48, 2001, [(0.03,.9,1450),(0.19,.65,1050),(0.36,1.0,1700)])
+          mechanical('reload_rifle', .64, 2002, [(0.03,.8,1250),(0.22,.65,900),(0.48,1.0,1550)], scrape=True)
+          mechanical('shotgun_pump', .58, 2003, [(0.02,.95,950),(0.45,1.0,1200)], scrape=True)
+          mechanical('empty_click', .13, 2004, [(0.015,1.0,2100)])
+          mechanical('hit_confirm', .10, 3001, [(0.01,1.0,2600),(0.045,.55,3100)])
+          mechanical('enemy_hit', .20, 3002, [(0.01,.9,560),(0.075,.55,420)], scrape=False)
+          mechanical('enemy_death', .42, 3003, [(0.01,.8,300),(0.18,.65,220),(0.31,.5,180)], scrape=True)
+          PY
+
+          for f in /tmp/ar-audio/*.wav; do
+            base="$(basename "$f" .wav)"
+            case "$base" in
+              hit_confirm) dest="assets/audio/ui/${base}.ogg" ;;
+              enemy_hit|enemy_death) dest="assets/audio/enemies/${base}.ogg" ;;
+              *) dest="assets/audio/weapons/${base}.ogg" ;;
+            esac
+            ffmpeg -hide_banner -loglevel error -y -i "$f" -c:a libvorbis -q:a 5 "$dest"
+          done
+
+      - name: Generate VFX, HUD and asset metadata
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import json
+          import json, struct
 
-          Path('assets/effects/muzzle_flash.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="g"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#fff3a0"/><stop offset=".65" stop-color="#ff9d00" stop-opacity=".85"/><stop offset="1" stop-color="#ff5200" stop-opacity="0"/></radialGradient></defs><circle cx="128" cy="128" r="118" fill="url(#g)"/><path d="M128 4 151 91 226 44 166 112 252 128 166 145 226 212 151 165 128 252 105 165 30 212 90 145 4 128 90 112 30 44 105 91Z" fill="#ffd44d" fill-opacity=".7"/></svg>''')
-          Path('assets/effects/smoke.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="s"><stop offset="0" stop-color="#dce1e5" stop-opacity=".7"/><stop offset=".55" stop-color="#777f86" stop-opacity=".35"/><stop offset="1" stop-color="#42484e" stop-opacity="0"/></radialGradient></defs><circle cx="82" cy="145" r="72" fill="url(#s)"/><circle cx="142" cy="112" r="86" fill="url(#s)"/><circle cx="187" cy="152" r="63" fill="url(#s)"/><circle cx="121" cy="177" r="66" fill="url(#s)"/></svg>''')
-          Path('assets/effects/bullet_impact.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><g fill="none" stroke="#111" stroke-linecap="round"><circle cx="128" cy="128" r="17" fill="#161616" stroke-width="7"/><path d="M117 111 91 55M142 113l40-55M145 134l63 27M118 143l-38 58M109 128 43 119M133 109l7-53M146 124l62-18M128 146l9 66" stroke-width="6"/></g></svg>''')
-          Path('assets/effects/tracer.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 32"><defs><linearGradient id="t"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".4" stop-color="#fff5b0" stop-opacity=".6"/><stop offset=".75" stop-color="#ffd04a"/><stop offset="1" stop-color="#ff8a00" stop-opacity="0"/></linearGradient></defs><rect y="10" width="512" height="12" rx="6" fill="url(#t)"/></svg>''')
-          Path('assets/ui/crosshair.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><g fill="none" stroke="white" stroke-width="5" stroke-linecap="round"><circle cx="64" cy="64" r="13"/><path d="M64 7v29M64 92v29M7 64h29M92 64h29"/></g></svg>''')
-          Path('assets/ui/hit_marker.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><g fill="none" stroke="white" stroke-width="7" stroke-linecap="round"><path d="m25 25 25 25M78 78l25 25M103 25 78 50M50 78l-25 25"/></g></svg>''')
+          Path('assets/effects/muzzle_flash.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="g"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#fff3a0"/><stop offset=".65" stop-color="#ff9d00" stop-opacity=".85"/><stop offset="1" stop-color="#ff5200" stop-opacity="0"/></radialGradient></defs><circle cx="128" cy="128" r="118" fill="url(#g)"/><path d="M128 4 151 91 226 44 166 112 252 128 166 145 226 212 151 165 128 252 105 165 30 212 90 145 4 128 90 112 30 44 105 91Z" fill="#ffd44d" fill-opacity=".7"/></svg>''', encoding='utf-8')
+          Path('assets/effects/smoke.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="s"><stop offset="0" stop-color="#dce1e5" stop-opacity=".7"/><stop offset=".55" stop-color="#777f86" stop-opacity=".35"/><stop offset="1" stop-color="#42484e" stop-opacity="0"/></radialGradient></defs><circle cx="82" cy="145" r="72" fill="url(#s)"/><circle cx="142" cy="112" r="86" fill="url(#s)"/><circle cx="187" cy="152" r="63" fill="url(#s)"/><circle cx="121" cy="177" r="66" fill="url(#s)"/></svg>''', encoding='utf-8')
+          Path('assets/effects/bullet_impact.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><g fill="none" stroke="#111" stroke-linecap="round"><circle cx="128" cy="128" r="17" fill="#161616" stroke-width="7"/><path d="M117 111 91 55M142 113l40-55M145 134l63 27M118 143l-38 58M109 128 43 119M133 109l7-53M146 124l62-18M128 146l9 66" stroke-width="6"/></g></svg>''', encoding='utf-8')
+          Path('assets/effects/tracer.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 32"><defs><linearGradient id="t"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".4" stop-color="#fff5b0" stop-opacity=".6"/><stop offset=".75" stop-color="#ffd04a"/><stop offset="1" stop-color="#ff8a00" stop-opacity="0"/></linearGradient></defs><rect y="10" width="512" height="12" rx="6" fill="url(#t)"/></svg>''', encoding='utf-8')
+          Path('assets/ui/crosshair.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><g fill="none" stroke="white" stroke-width="5" stroke-linecap="round"><circle cx="64" cy="64" r="13"/><path d="M64 7v29M64 92v29M7 64h29M92 64h29"/></g></svg>''', encoding='utf-8')
+          Path('assets/ui/hit_marker.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><g fill="none" stroke="white" stroke-width="7" stroke-linecap="round"><path d="m25 25 25 25M78 78l25 25M103 25 78 50M50 78l-25 25"/></g></svg>''', encoding='utf-8')
 
-          root=Path('assets')
-          rel=lambda p: sorted(str(x).replace('\\','/') for x in root.glob(p))
-          manifest={
-            'characters':{'humans':rel('characters/humans/*.glb'),'minions':rel('characters/minions/*.glb')},
-            'weapons':{'west':rel('weapons/west/*.glb'),'east':rel('weapons/east/*.glb')},
-            'audio':{'weapons':rel('audio/weapons/*.ogg'),'footsteps':rel('audio/footsteps/*.ogg')},
-            'effects':rel('effects/*'),'ui':rel('ui/*'),
-            'recommendedPrototype':{
-              'enemy':'assets/characters/humans/swat.glb',
-              'weapon':'assets/weapons/west/Rifle_Assault_West.glb',
-              'gunshot':'assets/audio/weapons/game_gunshot.ogg',
-              'muzzleFlash':'assets/effects/muzzle_flash.svg',
-              'smoke':'assets/effects/smoke.svg',
-              'impact':'assets/effects/bullet_impact.svg',
-              'crosshair':'assets/ui/crosshair.svg'}}
-          Path('assets/config/assets.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          root = Path('assets')
+          rel = lambda pattern: sorted(str(p).replace('\\','/') for p in root.glob(pattern))
 
-          groups=[('Human characters',len(rel('characters/humans/*.glb'))),('Animated minions',len(rel('characters/minions/*.glb'))),('Weapon GLBs',len(rel('weapons/**/*.glb'))),('Weapon audio',len(rel('audio/weapons/*.ogg'))),('Footsteps',len(rel('audio/footsteps/*.ogg'))),('VFX',len(rel('effects/*'))),('UI',len(rel('ui/*')))]
-          inv=['# Runtime asset inventory','','| Group | Files |','|---|---:|']+[f'| {n} | {c} |' for n,c in groups]+['',f'**Runtime files: {sum(c for _,c in groups)}**']
-          Path('assets/INVENTORY.md').write_text('\n'.join(inv)+'\n')
+          def glb_meta(path):
+              raw = path.read_bytes()
+              if len(raw) < 20 or raw[:4] != b'glTF':
+                  raise ValueError(f'Invalid GLB: {path}')
+              version, total = struct.unpack_from('<II', raw, 4)
+              off = 12
+              doc = None
+              while off + 8 <= len(raw):
+                  length, ctype = struct.unpack_from('<II', raw, off)
+                  off += 8
+                  chunk = raw[off:off+length]
+                  off += length
+                  if ctype == 0x4E4F534A:
+                      doc = json.loads(chunk.rstrip(b'\x00 ').decode('utf-8'))
+                      break
+              if doc is None:
+                  raise ValueError(f'GLB has no JSON chunk: {path}')
+              return {
+                  'path': str(path).replace('\\','/'),
+                  'bytes': len(raw),
+                  'glbVersion': version,
+                  'meshes': len(doc.get('meshes', [])),
+                  'skins': len(doc.get('skins', [])),
+                  'animations': [a.get('name') or f'animation_{i}' for i,a in enumerate(doc.get('animations', []))]
+              }
+
+          char_paths = sorted(root.glob('characters/**/*.glb'))
+          metadata = {'characters': [glb_meta(p) for p in char_paths]}
+          Path('assets/config/model_metadata.json').write_text(json.dumps(metadata, indent=2, ensure_ascii=False)+'\n', encoding='utf-8')
+
+          manifest = {
+              'characters': {'humans': rel('characters/humans/*.glb'), 'minions': rel('characters/minions/*.glb')},
+              'weapons': {'west': rel('weapons/west/*.glb'), 'east': rel('weapons/east/*.glb')},
+              'audio': {
+                  'weapons': rel('audio/weapons/*.ogg'),
+                  'footsteps': rel('audio/footsteps/*.ogg'),
+                  'enemies': rel('audio/enemies/*.ogg'),
+                  'ui': rel('audio/ui/*.ogg')
+              },
+              'effects': rel('effects/*'),
+              'ui': rel('ui/*'),
+              'recommendedPrototype': {
+                  'enemy': 'assets/characters/humans/swat.glb',
+                  'weapon': 'assets/weapons/west/Rifle_Assault_West.glb',
+                  'gunshot': 'assets/audio/weapons/rifle_fire.ogg',
+                  'reload': 'assets/audio/weapons/reload_rifle.ogg',
+                  'muzzleFlash': 'assets/effects/muzzle_flash.svg',
+                  'smoke': 'assets/effects/smoke.svg',
+                  'impact': 'assets/effects/bullet_impact.svg',
+                  'crosshair': 'assets/ui/crosshair.svg',
+                  'hitMarker': 'assets/ui/hit_marker.svg'
+              }
+          }
+          Path('assets/config/assets.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False)+'\n', encoding='utf-8')
+
+          groups = [
+              ('Human character GLB', len(rel('characters/humans/*.glb'))),
+              ('Animated minion GLB', len(rel('characters/minions/*.glb'))),
+              ('Weapon GLB', len(rel('weapons/**/*.glb'))),
+              ('Weapon/mechanical audio', len(rel('audio/weapons/*.ogg'))),
+              ('Footstep audio', len(rel('audio/footsteps/*.ogg'))),
+              ('Enemy audio', len(rel('audio/enemies/*.ogg'))),
+              ('UI audio', len(rel('audio/ui/*.ogg'))),
+              ('VFX', len(rel('effects/*'))),
+              ('UI graphics', len(rel('ui/*'))),
+          ]
+          lines = ['# Runtime asset inventory', '', '| Group | Files |', '|---|---:|'] + [f'| {n} | {c} |' for n,c in groups]
+          lines += ['', f'**Runtime files: {sum(c for _,c in groups)}**', '', 'Model animation metadata: `config/model_metadata.json`.']
+          Path('assets/INVENTORY.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
           PY
 
+      - name: Write provenance and project README
+        shell: bash
+        run: |
+          set -euo pipefail
           cat > assets/ASSET_SOURCES.md <<'EOF'
-          # Asset sources and licenses
-          - Weapons, source gunshots and footsteps: https://github.com/petroulacl/fps-asset-kit — CC0/public-domain sources. The two gunshots are transcoded to OGG for this WebXR project.
-          - Human characters: https://github.com/euuuuuuan/fatal-funnel-public — its audited `CREDITS.md` documents the three Quaternius Ultimate Modular Men derivatives as CC0 1.0 with redistribution allowed.
-          - Additional animated minions: https://github.com/Ariescar/gobkit-free-assets — CC0 1.0.
-          - Muzzle flash, smoke, bullet impact, tracer, crosshair and hit marker SVGs were authored for this repository.
-          - Source documentation and license copies are preserved under `assets/licenses/`.
+          # Asset sources and provenance
+
+          ## Weapons and footsteps
+          - Source: https://github.com/petroulacl/fps-asset-kit
+          - Flat Guns West/East and Fantozzi footsteps are documented by that source as CC0/public-domain material.
+          - A copy of the source README is retained at `licenses/FPS_ASSET_KIT_SOURCE_README.md`.
+
+          ## Human characters
+          - Source: https://github.com/euuuuuuan/fatal-funnel-public
+          - Its `CREDITS.md` documents `swat.glb`, `casual-character.glb`, and `worker.glb` (Quaternius Ultimate Modular Men derivatives) as CC0 1.0 with redistribution allowed.
+          - The source credits file is retained at `licenses/FATAL_FUNNEL_CREDITS.md`.
+
+          ## Additional enemies
+          - Source: https://github.com/Ariescar/gobkit-free-assets
+          - Eight `minion-*.glb` models are supplied under CC0 1.0 and are rigged/animated.
+          - License copy: `licenses/GOBKIT_CC0.txt`.
+
+          ## Project-authored assets
+          - Weapon firing, reload/mechanical, enemy and hit-confirm OGG sounds are procedurally generated specifically for this repository.
+          - Muzzle flash, smoke, bullet impact, tracer, crosshair and hit-marker SVG assets are authored specifically for this repository.
           EOF
 
           cat > README.md <<'EOF'
           # AR-Shooter
+
           AR / WebXR room-scale shooter prototype.
 
-          ## Runtime assets
-          - 3 human GLB characters including SWAT.
+          ## Runtime asset pack
+          - 3 human GLB characters, including SWAT.
           - 8 additional rigged/animated enemy GLBs.
-          - 20 GLB firearms.
-          - 2 OGG gunshots and 12 OGG footsteps.
-          - Muzzle flash, smoke, bullet impact, tracer, crosshair and hit marker.
-          - Asset manifest: `assets/config/assets.json`.
-          - Provenance/licenses: `assets/ASSET_SOURCES.md` and `assets/licenses/`.
+          - 20 GLB firearms: pistols, rifles, SMGs, shotguns and sniper rifles.
+          - Original firing/reload/mechanical OGG sounds plus 12 CC0 footsteps.
+          - Enemy hit/death and hit-confirm audio.
+          - Muzzle flash, smoke, bullet-impact and tracer VFX.
+          - Crosshair and hit-marker HUD graphics.
+          - `assets/config/assets.json` — paths for game code.
+          - `assets/config/model_metadata.json` — detected skins/meshes/animation names from character GLBs.
+          - `assets/ASSET_SOURCES.md` and `assets/licenses/` — provenance/license records.
 
-          The first prototype will use hitscan/raycast shooting instead of a physics body for every bullet.
+          The first prototype will use hitscan/raycast shooting rather than creating a physics body for every bullet.
           EOF
 
-      - name: Validate and publish
+      - name: Validate and publish assets
         shell: bash
         run: |
           set -euo pipefail
@@ -127,8 +281,18 @@ jobs:
           test "$(find assets/characters/humans -name '*.glb' | wc -l)" -eq 3
           test "$(find assets/characters/minions -name '*.glb' | wc -l)" -eq 8
           test "$(find assets/audio/footsteps -name '*.ogg' | wc -l)" -eq 12
-          test "$(find assets/audio/weapons -name '*.ogg' | wc -l)" -eq 2
+          test "$(find assets/audio/weapons -name '*.ogg' | wc -l)" -eq 8
+          test "$(find assets/audio/enemies -name '*.ogg' | wc -l)" -eq 2
+          test "$(find assets/audio/ui -name '*.ogg' | wc -l)" -eq 1
           python3 -m json.tool assets/config/assets.json >/dev/null
+          python3 -m json.tool assets/config/model_metadata.json >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          files=list(Path('assets').glob('weapons/**/*.glb'))+list(Path('assets').glob('characters/**/*.glb'))
+          bad=[str(p) for p in files if p.read_bytes()[:4] != b'glTF']
+          if bad: raise SystemExit('Invalid GLB files: '+', '.join(bad))
+          print(f'Validated {len(files)} GLB files')
+          PY
           rm -f .github/workflows/bootstrap-assets.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
