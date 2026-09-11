@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Miniature Ops &mdash; AR Shooter</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #05070a;
+        overflow: hidden;
+        font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      }
+      #app { position: fixed; inset: 0; }
+      canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+      #overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #e8f0f6;
+        text-align: center;
+        background: radial-gradient(circle at 50% 30%, #142230 0%, #05070a 70%);
+        z-index: 10;
+      }
+      #overlay h1 {
+        font-size: 28px;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        margin: 0 0 8px;
+        color: #ffb347;
+      }
+      #overlay p {
+        max-width: 520px;
+        line-height: 1.5;
+        color: #a9bccb;
+        margin: 6px 0 20px;
+        font-size: 14px;
+      }
+      #enter-ar {
+        background: linear-gradient(180deg, #ff9d2e, #e0680f);
+        color: #1a0f00;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        border: none;
+        border-radius: 10px;
+        padding: 16px 36px;
+        font-size: 16px;
+        cursor: pointer;
+        box-shadow: 0 6px 18px rgba(224, 104, 15, 0.35);
+      }
+      #enter-ar:disabled {
+        background: #3a3f46;
+        color: #7c8792;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+      #status-line {
+        margin-top: 18px;
+        font-size: 12px;
+        color: #6f8296;
+        min-height: 16px;
+      }
+      #overlay.hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="overlay">
+      <h1>Miniature Ops</h1>
+      <p>
+        Enemy soldiers ~40&nbsp;cm tall are about to breach your room. Put on your
+        Quest&nbsp;3, stand in a clear area with a few meters of open floor, and
+        enter AR to arm up.
+      </p>
+      <button id="enter-ar" disabled>Checking WebXR&hellip;</button>
+      <div id="status-line"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

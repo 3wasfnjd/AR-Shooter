@@ -1,0 +1,18 @@
+{
+  "name": "ar-shooter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Meta Quest 3 WebXR AR shooter - miniature soldiers invade your room.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}
