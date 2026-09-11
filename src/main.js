@@ -82,6 +82,7 @@ let enemyTemplate;
 let eliteGltf;
 let eliteTemplate;
 let standardClips = [];
+let enemyWeaponTemplate;
 let muzzleTexture;
 let impactTexture;
 let hitTestSource = null;
@@ -179,6 +180,47 @@ function normalizeWeapon(model, targetLength = 0.65) {
   const center = fixed.getCenter(new THREE.Vector3());
   model.position.sub(center);
 }
+
+function findBone(root, names) {
+  for (const name of names) {
+    const bone = root.getObjectByName(name);
+    if (bone) return bone;
+  }
+  return null;
+}
+
+function attachEnemyWeapon(enemy) {
+  if (!enemyWeaponTemplate || !enemy?.model) return null;
+
+  const hand = enemy.kind === 'elite'
+    ? findBone(enemy.model, ['mixamorig:RightHand_033', 'mixamorig:RightHand'])
+    : findBone(enemy.model, ['Wrist.R', 'RightHand']);
+  if (!hand) {
+    console.warn(`Enemy weapon hand bone not found for ${enemy.kind}`);
+    return null;
+  }
+
+  const weapon = enemyWeaponTemplate.clone(true);
+  weapon.name = 'Enemy_Rifle';
+  weapon.userData.enemyWeapon = true;
+  weapon.position.set(0.015, -0.008, -0.055);
+  weapon.rotation.set(-0.10, Math.PI, Math.PI / 2);
+
+  weapon.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = false;
+      child.receiveShadow = false;
+      child.userData.enemyWeapon = true;
+      child.userData.enemyRef = null;
+    }
+  });
+
+  hand.add(weapon);
+  enemy.weapon = weapon;
+  enemy.weaponHand = hand;
+  return weapon;
+}
+
 
 function findClip(name, clips = enemyGltf?.animations || []) {
   return clips.find((clip) => clip.name.endsWith(`|${name}`)) ||
@@ -343,6 +385,7 @@ function createEnemy(position, index = 0) {
     }
   });
 
+  attachEnemyWeapon(enemy);
   playEnemyAnimation(enemy, 'Idle_Gun', true, 0.18);
   enemies.push(enemy);
   return enemy;
@@ -511,7 +554,9 @@ function shoot() {
   raycaster.far = 16;
   const liveMeshes = [];
   for (const enemy of enemies) {
-    if (!enemy.dead) enemy.model.traverse((obj) => { if (obj.isMesh) liveMeshes.push(obj); });
+    if (!enemy.dead) enemy.model.traverse((obj) => {
+      if (obj.isMesh && !obj.userData.enemyWeapon) liveMeshes.push(obj);
+    });
   }
   const hits = raycaster.intersectObjects(liveMeshes, false);
   const end = hits.length ? hits[0].point.clone() : origin.clone().addScaledVector(direction, 9);
@@ -867,6 +912,11 @@ async function init() {
     for (const category of Object.values(manifest.audio || {})) {
       for (const file of category) preloadAudio(file);
     }
+
+    ui.loadingText.textContent = 'تجهيز أسلحة الجنود...';
+    const enemyWeaponGltf = await loadGLTF('assets/weapons/west/Rifle_Assault_West.glb');
+    enemyWeaponTemplate = enemyWeaponGltf.scene;
+    normalizeWeapon(enemyWeaponTemplate, 0.18);
 
     setupARButton();
     await equipWeapon(0, true);
