@@ -3,7 +3,8 @@
     "humans": [
       "assets/characters/humans/casual-character.glb",
       "assets/characters/humans/swat.glb",
-      "assets/characters/humans/worker.glb"
+      "assets/characters/humans/worker.glb",
+      "assets/characters/humans/swat_elite_quest.glb"
     ],
     "minions": [
       "assets/characters/minions/minion-a01.glb",
@@ -94,6 +95,7 @@
     "smoke": "assets/effects/smoke.svg",
     "impact": "assets/effects/bullet_impact.svg",
     "crosshair": "assets/ui/crosshair.svg",
-    "hitMarker": "assets/ui/hit_marker.svg"
+    "hitMarker": "assets/ui/hit_marker.svg",
+    "eliteEnemy": "assets/characters/humans/swat_elite_quest.glb"
   }
 }
