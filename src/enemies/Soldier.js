@@ -386,6 +386,12 @@ export class Soldier {
       this.state = 'alert';
       this.stateTimer = randRange(0.25, this.type.stats.reactionTime);
       this._playAction('alert', { fadeTime: 0.3 });
+      // Reused as a "contact" chime, not for its literal "hit confirmed"
+      // meaning: a short, attention-grabbing ping at the soldier's own
+      // position so the player has an audio cue to look toward new
+      // arrivals even before they start firing (no dedicated "enemy
+      // spotted" sound exists in assets/audio).
+      this.audio.playAt(AUDIO.ui.hitConfirm, this.group, { volume: 0.3, refDistance: 0.8 });
     }
   }
 

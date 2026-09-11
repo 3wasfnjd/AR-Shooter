@@ -23,11 +23,11 @@ export class EnemyManager {
     this.soldiers = [];
     this.coverPoints = this._makeCoverPoints();
 
-    // Kept tight on purpose: at 35-45cm tall, soldiers standing 2m+ away
-    // read as barely-visible specks in passthrough. Closer engagement
-    // range keeps them a readable, threatening size.
-    this.engagementMin = 0.6;
-    this.engagementMax = 1.3;
+    // Kept tight on purpose: at miniature scale, soldiers standing a
+    // couple meters away read as barely-visible specks in passthrough.
+    // Closer engagement range keeps them a readable, threatening size.
+    this.engagementMin = 0.5;
+    this.engagementMax = 1.0;
 
     this.onPlayerDamaged = null; // (amount) => void
     this.onSoldierKilled = null; // (soldier) => void
