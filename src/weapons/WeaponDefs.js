@@ -1,12 +1,16 @@
 import { WEAPON_MODELS, AUDIO } from '../assets/paths.js';
 
-// Per-weapon tuning. `grip*` values position/orient the glb relative to the
-// controller grip space (WebXR grip space: -Z is roughly "into the palm",
-// +Y up). Exact muzzle-tip offsets were derived from each model's bounding
-// box heuristically (see WeaponSystem._autoOrient) rather than a manual art
-// pass, since the models couldn't be visually inspected while authoring
-// this file; `muzzleForwardBias` nudges the computed tip forward/back and
-// is the first thing to tweak on-device if a flash appears mid-barrel.
+// Per-weapon tuning. `grip.pos`/`grip.rotDeg` position/orient the glb
+// relative to the controller grip space (WebXR grip space: -Z is roughly
+// "into the palm", +Y up). These started as an unverified guess and were
+// nudged down (more negative Y) after the first on-device screenshot
+// showed the weapon floating above the fist rather than seated in it -
+// still an approximation, not a measured fit. Don't guess a third time:
+// use the in-game calibration mode (hold both triggers ~0.6s - see
+// WeaponSystem.js and README.md) to get an exact live fit per weapon and
+// replace these numbers with what it reports.
+// `muzzleForwardBias` nudges the computed muzzle tip forward/back and is
+// the other thing to check if a flash appears mid-barrel.
 export const WEAPON_DEFS = [
   {
     id: 'pistol',
@@ -19,7 +23,7 @@ export const WEAPON_DEFS = [
     reloadTime: 1.1,
     spreadDeg: 0.9,
     scale: 1,
-    grip: { pos: [0, -0.02, 0.04], rotDeg: [0, 0, 0] },
+    grip: { pos: [0, -0.07, 0.04], rotDeg: [0, 0, 0] },
     muzzleForwardBias: 0.02,
     recoil: { kickBack: 0.02, riseDeg: 5, recoverySpeed: 14 },
     flash: { size: 0.06, life: 0.09, color: 0xfff0c0 },
@@ -41,7 +45,7 @@ export const WEAPON_DEFS = [
     reloadTime: 1.6,
     spreadDeg: 2.2,
     scale: 1,
-    grip: { pos: [0, -0.02, 0.05], rotDeg: [0, 0, 0] },
+    grip: { pos: [0, -0.07, 0.05], rotDeg: [0, 0, 0] },
     muzzleForwardBias: 0.02,
     recoil: { kickBack: 0.012, riseDeg: 2.4, recoverySpeed: 20 },
     flash: { size: 0.055, life: 0.08, color: 0xfff0c0 },
@@ -63,7 +67,7 @@ export const WEAPON_DEFS = [
     reloadTime: 1.9,
     spreadDeg: 1.4,
     scale: 1,
-    grip: { pos: [0, -0.02, 0.08], rotDeg: [0, 0, 0] },
+    grip: { pos: [0, -0.07, 0.08], rotDeg: [0, 0, 0] },
     muzzleForwardBias: 0.03,
     recoil: { kickBack: 0.018, riseDeg: 3.2, recoverySpeed: 16 },
     flash: { size: 0.09, life: 0.1, color: 0xffe6a8 },
@@ -86,7 +90,7 @@ export const WEAPON_DEFS = [
     reloadTime: 2.3,
     spreadDeg: 9,
     scale: 1,
-    grip: { pos: [0, -0.025, 0.1], rotDeg: [0, 0, 0] },
+    grip: { pos: [0, -0.075, 0.1], rotDeg: [0, 0, 0] },
     muzzleForwardBias: 0.04,
     recoil: { kickBack: 0.05, riseDeg: 10, recoverySpeed: 8 },
     flash: { size: 0.14, life: 0.14, color: 0xffd68a },
@@ -109,7 +113,7 @@ export const WEAPON_DEFS = [
     reloadTime: 2.6,
     spreadDeg: 0.15,
     scale: 1,
-    grip: { pos: [0, -0.02, 0.12], rotDeg: [0, 0, 0] },
+    grip: { pos: [0, -0.07, 0.12], rotDeg: [0, 0, 0] },
     muzzleForwardBias: 0.05,
     recoil: { kickBack: 0.07, riseDeg: 13, recoverySpeed: 6 },
     flash: { size: 0.17, life: 0.16, color: 0xffffff },

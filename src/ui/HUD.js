@@ -4,8 +4,12 @@ import { UI } from '../assets/paths.js';
 import { weaponDef } from '../weapons/WeaponDefs.js';
 import { damp } from '../utils/math.js';
 
-const PANEL_W = 0.14;
-const PANEL_H = 0.1;
+// Physically bigger than the canvas' pixel-font sizes were originally
+// tuned for, on purpose: this is the cheapest legibility win (same text,
+// stretched larger in real-world space) after feedback that the wrist
+// panel was hard to read at arm's length in-headset.
+const PANEL_W = 0.19;
+const PANEL_H = 0.135;
 
 function makeCanvas(w, h) {
   const canvas = document.createElement('canvas');
@@ -31,6 +35,7 @@ export class HUD {
     this._buildCrosshair();
     this._buildHitMarker();
     this._buildVignette();
+    this._buildDirectionalIndicator();
     this._buildWristPanel();
   }
 
@@ -70,6 +75,30 @@ export class HUD {
     this.vignette.scale.set(0.3, 0.3, 1);
     this.xrApp.camera.add(this.vignette);
     this._vignetteT = 0;
+  }
+
+  /** A chevron that points toward wherever the player last took fire from. */
+  _buildDirectionalIndicator() {
+    const canvas = makeCanvas(128, 128);
+    const ctx = canvas.getContext('2d');
+    ctx.translate(64, 64);
+    ctx.fillStyle = '#ff4433';
+    ctx.beginPath();
+    ctx.moveTo(0, -56);
+    ctx.lineTo(34, 10);
+    ctx.lineTo(0, -10);
+    ctx.lineTo(-34, 10);
+    ctx.closePath();
+    ctx.fill();
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, opacity: 0, toneMapped: false });
+    this.threatArrow = new THREE.Sprite(mat);
+    this.threatArrow.scale.set(0.045, 0.045, 1);
+    this.threatArrow.renderOrder = 998;
+    this.threatArrow.position.set(0, 0, -0.16);
+    this.xrApp.camera.add(this.threatArrow);
+    this._threatT = 0;
+    this._threatWorldPos = null;
   }
 
   _buildWristPanel() {
@@ -119,8 +148,13 @@ export class HUD {
     this._hitMarkerZone = zone;
   }
 
-  flashDirectionalHit() {
+  /** `sourcePos` (world-space, optional): where the shot that hit us came from, to point the threat arrow. */
+  flashDirectionalHit(sourcePos) {
     this._vignetteT = 1;
+    if (sourcePos) {
+      this._threatWorldPos = sourcePos.clone();
+      this._threatT = 1;
+    }
   }
 
   // ---- per-frame ------------------------------------------------------
@@ -130,7 +164,28 @@ export class HUD {
     this._updateCrosshair();
     this._updateHitMarker(dt);
     this._updateVignette(dt);
+    this._updateThreatArrow(dt);
     this._updatePanel(gameData);
+  }
+
+  _updateThreatArrow(dt) {
+    if (!this.threatArrow) return;
+    this._threatT = Math.max(0, this._threatT - dt / 1.4);
+    if (this._threatT <= 0 || !this._threatWorldPos) {
+      this.threatArrow.material.opacity = 0;
+      return;
+    }
+    // Threat position expressed in camera-local space: -Z is forward, +X
+    // is right. atan2(x, -z) gives the horizontal angle off forward, with
+    // +-PI meaning directly behind - used both to place the arrow around
+    // the view edge and to rotate it (2D sprite rotation) to point outward
+    // toward that bearing.
+    const local = this.xrApp.camera.worldToLocal(this._threatWorldPos.clone());
+    const angle = Math.atan2(local.x, -local.z);
+    const radius = 0.06;
+    this.threatArrow.position.set(Math.sin(angle) * radius, Math.cos(angle) * radius * 0.6, -0.16);
+    this.threatArrow.material.rotation = -angle;
+    this.threatArrow.material.opacity = Math.min(1, this._threatT * 2);
   }
 
   _updateCrosshair() {

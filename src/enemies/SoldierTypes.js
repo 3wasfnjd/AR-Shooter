@@ -32,11 +32,14 @@ export const SOLDIER_TYPES = {
     label: 'Soldier',
     model: CHARACTERS.soldier,
     animated: true,
-    // Bumped toward (and slightly past) the top of the spec's 35-45cm
-    // range: player feedback was that ~38cm soldiers a couple meters out
-    // read as near-invisible in passthrough. Readability wins over the
-    // exact lower bound here.
-    heightRange: [0.42, 0.46],
+    // Bumped past the spec's 35-45cm range after two rounds of on-device
+    // feedback that soldiers were still hard to spot even at 42-46cm - the
+    // deeper issue turned out to be as much about *where to look* (floor
+    // level, easy to miss) as raw size, addressed with the threat-arrow
+    // indicator and contact ping in HUD.js/Soldier.js, but a further size
+    // bump is a cheap complementary fix. Readability wins over the exact
+    // lower bound here.
+    heightRange: [0.5, 0.55],
     boneNames: {
       head: 'Head',
       chest: 'Chest',
@@ -66,7 +69,7 @@ export const SOLDIER_TYPES = {
     label: 'Elite Soldier',
     model: CHARACTERS.elite,
     animated: false,
-    heightRange: [0.46, 0.5],
+    heightRange: [0.55, 0.6],
     muzzleNodeNames: ['frontSIght_low', 'barrel_low', 'topGun_low'],
     boneNamesFallback: {
       head: 'mixamorig:Head_05',

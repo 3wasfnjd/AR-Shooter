@@ -147,7 +147,7 @@ export class Game {
 
   _startWave(playerPos) {
     const composition = this._waveComposition(this.wave);
-    const sectors = this._distributeSectors(composition.length);
+    const sectors = this._distributeSectors(composition.length, this.wave === 1);
     this._spawnQueue = composition.map((typeId, i) => ({ typeId, sector: sectors[i] }));
     this._spawnTimer = 0;
     this._waveActive = true;
@@ -162,8 +162,26 @@ export class Game {
     return list;
   }
 
-  _distributeSectors(count) {
+  /**
+   * `biasForward`: wave 1 only. Spawns land in a ~110 deg arc in front of
+   * wherever the player is currently looking instead of the full circle,
+   * so the very first encounter can't spawn behind them unseen - later
+   * waves go full 360 deg for real multi-directional attacks once the
+   * player knows to expect that.
+   */
+  _distributeSectors(count, biasForward = false) {
     const sectors = [];
+    if (biasForward) {
+      const dir = new THREE.Vector3();
+      this.xrApp.camera.getWorldDirection(dir);
+      const facingYaw = Math.atan2(dir.x, dir.z);
+      const arc = THREE.MathUtils.degToRad(110);
+      for (let i = 0; i < count; i++) {
+        const t = count > 1 ? i / (count - 1) : 0.5;
+        sectors.push(facingYaw + (t - 0.5) * arc + randRange(-0.08, 0.08));
+      }
+      return sectors;
+    }
     const base = Math.random() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
       sectors.push(base + (i / count) * Math.PI * 2 + randRange(-0.25, 0.25));
