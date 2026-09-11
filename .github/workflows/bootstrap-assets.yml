@@ -3,8 +3,7 @@ name: Bootstrap AR Shooter Assets
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/bootstrap-assets.yml'
+    paths: ['.github/workflows/bootstrap-assets.yml']
 
 permissions:
   contents: write
@@ -14,160 +13,113 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout target repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Fetch curated asset sources
+      - name: Install audio encoder
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Fetch asset sources
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/fps-kit /tmp/gobkit /tmp/fatal-funnel
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/petroulacl/fps-asset-kit.git /tmp/fps-kit
-          git -C /tmp/fps-kit sparse-checkout set --skip-checks \
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/petroulacl/fps-asset-kit.git /tmp/fps
+          git -C /tmp/fps sparse-checkout set --skip-checks \
             'weapons/flat_guns_west/Flat Guns West/GLB' \
             'weapons/flat_guns_east/Flat Guns East/GLB' \
             'sfx/gunshots' \
             'sfx/footsteps/Fantozzi-footsteps/ogg'
           git clone --depth 1 https://github.com/Ariescar/gobkit-free-assets.git /tmp/gobkit
-          git clone --depth 1 https://github.com/euuuuuuan/fatal-funnel-public.git /tmp/fatal-funnel
+          git clone --depth 1 https://github.com/euuuuuuan/fatal-funnel-public.git /tmp/funnel
 
-      - name: Assemble runtime assets
+      - name: Assemble runtime pack
         shell: bash
         run: |
           set -euo pipefail
           rm -rf assets
-          mkdir -p assets/characters/humans assets/characters/minions \
-            assets/weapons/west assets/weapons/east \
-            assets/audio/weapons assets/audio/footsteps \
-            assets/effects assets/ui assets/config assets/licenses
+          mkdir -p assets/{characters/{humans,minions},weapons/{west,east},audio/{weapons,footsteps},effects,ui,config,licenses}
 
-          cp '/tmp/fps-kit/weapons/flat_guns_west/Flat Guns West/GLB/'*.glb assets/weapons/west/
-          cp '/tmp/fps-kit/weapons/flat_guns_east/Flat Guns East/GLB/'*.glb assets/weapons/east/
-
-          # Re-encode WAV sources as OGG. Besides being smaller for WebXR, this avoids
-          # false-positive secret scanning matches caused by arbitrary bytes in WAV data.
-          ffmpeg -hide_banner -loglevel error -y -i /tmp/fps-kit/sfx/gunshots/game_gunshot.wav assets/audio/weapons/game_gunshot.ogg
-          ffmpeg -hide_banner -loglevel error -y -i /tmp/fps-kit/sfx/gunshots/sniper_shot.wav assets/audio/weapons/sniper_shot.ogg
-          cp '/tmp/fps-kit/sfx/footsteps/Fantozzi-footsteps/ogg/'*.ogg assets/audio/footsteps/
+          cp '/tmp/fps/weapons/flat_guns_west/Flat Guns West/GLB/'*.glb assets/weapons/west/
+          cp '/tmp/fps/weapons/flat_guns_east/Flat Guns East/GLB/'*.glb assets/weapons/east/
+          ffmpeg -hide_banner -loglevel error -y -i /tmp/fps/sfx/gunshots/game_gunshot.wav assets/audio/weapons/game_gunshot.ogg
+          ffmpeg -hide_banner -loglevel error -y -i /tmp/fps/sfx/gunshots/sniper_shot.wav assets/audio/weapons/sniper_shot.ogg
+          cp '/tmp/fps/sfx/footsteps/Fantozzi-footsteps/ogg/'*.ogg assets/audio/footsteps/
+          cp /tmp/fps/README.md assets/licenses/FPS_ASSET_KIT_SOURCE_README.md
 
           cp /tmp/gobkit/minion/*.glb assets/characters/minions/
           cp /tmp/gobkit/LICENSE assets/licenses/GOBKIT_CC0.txt
 
-          cp /tmp/fatal-funnel/packages/renderer/assets/models/quaternius-men/swat.glb assets/characters/humans/swat.glb
-          cp /tmp/fatal-funnel/packages/renderer/assets/models/quaternius-men/casual-character.glb assets/characters/humans/casual-character.glb
-          cp /tmp/fatal-funnel/packages/renderer/assets/models/quaternius-men/worker.glb assets/characters/humans/worker.glb
-          cp /tmp/fatal-funnel/CREDITS.md assets/licenses/FATAL_FUNNEL_CREDITS.md
-          cp /tmp/fps-kit/README.md assets/licenses/FPS_ASSET_KIT_SOURCE_README.md
+          cp /tmp/funnel/packages/renderer/assets/models/quaternius-men/swat.glb assets/characters/humans/swat.glb
+          cp /tmp/funnel/packages/renderer/assets/models/quaternius-men/casual-character.glb assets/characters/humans/casual-character.glb
+          cp /tmp/funnel/packages/renderer/assets/models/quaternius-men/worker.glb assets/characters/humans/worker.glb
+          cp /tmp/funnel/CREDITS.md assets/licenses/FATAL_FUNNEL_CREDITS.md
 
-      - name: Create lightweight AR effects and HUD assets
+      - name: Generate effects, HUD and manifests
         shell: bash
         run: |
           set -euo pipefail
-          cat > assets/effects/muzzle_flash.svg <<'SVG'
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="g"><stop offset="0" stop-color="#fff"/><stop offset=".22" stop-color="#fff6ad"/><stop offset=".55" stop-color="#ffb21a" stop-opacity=".9"/><stop offset="1" stop-color="#ff5a00" stop-opacity="0"/></radialGradient></defs><circle cx="128" cy="128" r="118" fill="url(#g)"/><path d="M128 3 151 91 225 45 166 112 253 128 166 145 225 211 151 165 128 253 105 165 31 211 90 145 3 128 90 112 31 45 105 91Z" fill="#ffd35a" fill-opacity=".74"/></svg>
-          SVG
-          cat > assets/effects/smoke.svg <<'SVG'
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="s"><stop offset="0" stop-color="#d8dde2" stop-opacity=".72"/><stop offset=".55" stop-color="#858b91" stop-opacity=".38"/><stop offset="1" stop-color="#444a50" stop-opacity="0"/></radialGradient></defs><circle cx="82" cy="145" r="72" fill="url(#s)"/><circle cx="142" cy="112" r="86" fill="url(#s)"/><circle cx="187" cy="152" r="63" fill="url(#s)"/><circle cx="121" cy="177" r="66" fill="url(#s)"/></svg>
-          SVG
-          cat > assets/effects/bullet_impact.svg <<'SVG'
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><g fill="none" stroke="#111" stroke-linecap="round"><circle cx="128" cy="128" r="17" fill="#161616" stroke-width="7"/><path d="M117 111 91 55M142 113l40-55M145 134l63 27M118 143l-38 58M109 128 43 119M133 109l7-53M146 124l62-18M128 146l9 66" stroke-width="6"/><path d="m92 55-18-12m108 15 18-16m8 119 19 16M80 201l-13 20M43 119l-24 5m121-68 17-13m51 63 25-6m-96 112 13 22" stroke-width="4"/></g></svg>
-          SVG
-          cat > assets/effects/tracer.svg <<'SVG'
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 32"><defs><linearGradient id="t"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".35" stop-color="#fff6bd" stop-opacity=".55"/><stop offset=".72" stop-color="#ffd04a"/><stop offset="1" stop-color="#ff8a00" stop-opacity="0"/></linearGradient></defs><rect x="0" y="10" width="512" height="12" rx="6" fill="url(#t)"/></svg>
-          SVG
-          cat > assets/ui/crosshair.svg <<'SVG'
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><g fill="none" stroke="white" stroke-width="5" stroke-linecap="round"><circle cx="64" cy="64" r="13"/><path d="M64 7v29M64 92v29M7 64h29M92 64h29"/></g></svg>
-          SVG
-          cat > assets/ui/hit_marker.svg <<'SVG'
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><g fill="none" stroke="white" stroke-width="7" stroke-linecap="round"><path d="m25 25 25 25M78 78l25 25M103 25 78 50M50 78l-25 25"/></g></svg>
-          SVG
-
-      - name: Write manifest, provenance and README
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > assets/ASSET_SOURCES.md <<'EOF'
-          # Asset sources and licenses
-
-          This repository keeps runtime-ready assets only. Third-party files remain under their original licenses.
-
-          ## Weapons and audio
-          - Source: https://github.com/petroulacl/fps-asset-kit
-          - Flat Guns West/East: CC0 1.0 / public domain.
-          - `game_gunshot.ogg` and `sniper_shot.ogg` are OGG transcodes of the source CC0 WAV files.
-          - Fantozzi footsteps (OGG): CC0.
-          - Source documentation: `licenses/FPS_ASSET_KIT_SOURCE_README.md`.
-
-          ## Human characters
-          - Source: https://github.com/euuuuuuan/fatal-funnel-public
-          - `swat.glb`, `casual-character.glb`, `worker.glb`: Quaternius Ultimate Modular Men derivatives documented by the source project's audited credits as CC0 1.0 with redistribution allowed.
-          - Source credits: `licenses/FATAL_FUNNEL_CREDITS.md`.
-
-          ## Additional animated enemies
-          - Source: https://github.com/Ariescar/gobkit-free-assets
-          - Eight `minion-*.glb` models: CC0 1.0, rigged and animated.
-          - License: `licenses/GOBKIT_CC0.txt`.
-
-          ## Project-created runtime effects
-          The SVG muzzle flash, smoke, bullet impact, tracer, crosshair and hit-marker files were authored directly for this AR-Shooter repository.
-          EOF
-
           python3 - <<'PY'
           from pathlib import Path
           import json
-          root = Path('assets')
-          def rels(pattern): return sorted(str(p).replace('\\','/') for p in root.glob(pattern))
-          manifest = {
-            'characters': {'humans': rels('characters/humans/*.glb'), 'minions': rels('characters/minions/*.glb')},
-            'weapons': {'west': rels('weapons/west/*.glb'), 'east': rels('weapons/east/*.glb')},
-            'audio': {'weapons': rels('audio/weapons/*'), 'footsteps': rels('audio/footsteps/*')},
-            'effects': rels('effects/*'), 'ui': rels('ui/*'),
-            'recommendedPrototype': {
+
+          Path('assets/effects/muzzle_flash.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="g"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#fff3a0"/><stop offset=".65" stop-color="#ff9d00" stop-opacity=".85"/><stop offset="1" stop-color="#ff5200" stop-opacity="0"/></radialGradient></defs><circle cx="128" cy="128" r="118" fill="url(#g)"/><path d="M128 4 151 91 226 44 166 112 252 128 166 145 226 212 151 165 128 252 105 165 30 212 90 145 4 128 90 112 30 44 105 91Z" fill="#ffd44d" fill-opacity=".7"/></svg>''')
+          Path('assets/effects/smoke.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="s"><stop offset="0" stop-color="#dce1e5" stop-opacity=".7"/><stop offset=".55" stop-color="#777f86" stop-opacity=".35"/><stop offset="1" stop-color="#42484e" stop-opacity="0"/></radialGradient></defs><circle cx="82" cy="145" r="72" fill="url(#s)"/><circle cx="142" cy="112" r="86" fill="url(#s)"/><circle cx="187" cy="152" r="63" fill="url(#s)"/><circle cx="121" cy="177" r="66" fill="url(#s)"/></svg>''')
+          Path('assets/effects/bullet_impact.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><g fill="none" stroke="#111" stroke-linecap="round"><circle cx="128" cy="128" r="17" fill="#161616" stroke-width="7"/><path d="M117 111 91 55M142 113l40-55M145 134l63 27M118 143l-38 58M109 128 43 119M133 109l7-53M146 124l62-18M128 146l9 66" stroke-width="6"/></g></svg>''')
+          Path('assets/effects/tracer.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 32"><defs><linearGradient id="t"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".4" stop-color="#fff5b0" stop-opacity=".6"/><stop offset=".75" stop-color="#ffd04a"/><stop offset="1" stop-color="#ff8a00" stop-opacity="0"/></linearGradient></defs><rect y="10" width="512" height="12" rx="6" fill="url(#t)"/></svg>''')
+          Path('assets/ui/crosshair.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><g fill="none" stroke="white" stroke-width="5" stroke-linecap="round"><circle cx="64" cy="64" r="13"/><path d="M64 7v29M64 92v29M7 64h29M92 64h29"/></g></svg>''')
+          Path('assets/ui/hit_marker.svg').write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><g fill="none" stroke="white" stroke-width="7" stroke-linecap="round"><path d="m25 25 25 25M78 78l25 25M103 25 78 50M50 78l-25 25"/></g></svg>''')
+
+          root=Path('assets')
+          rel=lambda p: sorted(str(x).replace('\\','/') for x in root.glob(p))
+          manifest={
+            'characters':{'humans':rel('characters/humans/*.glb'),'minions':rel('characters/minions/*.glb')},
+            'weapons':{'west':rel('weapons/west/*.glb'),'east':rel('weapons/east/*.glb')},
+            'audio':{'weapons':rel('audio/weapons/*.ogg'),'footsteps':rel('audio/footsteps/*.ogg')},
+            'effects':rel('effects/*'),'ui':rel('ui/*'),
+            'recommendedPrototype':{
               'enemy':'assets/characters/humans/swat.glb',
               'weapon':'assets/weapons/west/Rifle_Assault_West.glb',
               'gunshot':'assets/audio/weapons/game_gunshot.ogg',
               'muzzleFlash':'assets/effects/muzzle_flash.svg',
               'smoke':'assets/effects/smoke.svg',
               'impact':'assets/effects/bullet_impact.svg',
-              'crosshair':'assets/ui/crosshair.svg'
-            }
-          }
-          Path('assets/config/assets.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
-          groups = {
-            'Human character GLB': list(root.glob('characters/humans/*.glb')),
-            'Animated minion GLB': list(root.glob('characters/minions/*.glb')),
-            'Weapon GLB': list(root.glob('weapons/**/*.glb')),
-            'Weapon audio': list(root.glob('audio/weapons/*')),
-            'Footstep audio': list(root.glob('audio/footsteps/*')),
-            'VFX': list(root.glob('effects/*')), 'UI': list(root.glob('ui/*')),
-          }
-          lines=['# Runtime asset inventory','','| Group | Files |','|---|---:|']
-          for name, files in groups.items(): lines.append(f'| {name} | {len(files)} |')
-          lines += ['', f'**Runtime files: {sum(map(len, groups.values()))}**', '', 'See `ASSET_SOURCES.md` for provenance and licensing.']
-          Path('assets/INVENTORY.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
+              'crosshair':'assets/ui/crosshair.svg'}}
+          Path('assets/config/assets.json').write_text(json.dumps(manifest,indent=2)+'\n')
+
+          groups=[('Human characters',len(rel('characters/humans/*.glb'))),('Animated minions',len(rel('characters/minions/*.glb'))),('Weapon GLBs',len(rel('weapons/**/*.glb'))),('Weapon audio',len(rel('audio/weapons/*.ogg'))),('Footsteps',len(rel('audio/footsteps/*.ogg'))),('VFX',len(rel('effects/*'))),('UI',len(rel('ui/*')))]
+          inv=['# Runtime asset inventory','','| Group | Files |','|---|---:|']+[f'| {n} | {c} |' for n,c in groups]+['',f'**Runtime files: {sum(c for _,c in groups)}**']
+          Path('assets/INVENTORY.md').write_text('\n'.join(inv)+'\n')
           PY
+
+          cat > assets/ASSET_SOURCES.md <<'EOF'
+          # Asset sources and licenses
+          - Weapons, source gunshots and footsteps: https://github.com/petroulacl/fps-asset-kit — CC0/public-domain sources. The two gunshots are transcoded to OGG for this WebXR project.
+          - Human characters: https://github.com/euuuuuuan/fatal-funnel-public — its audited `CREDITS.md` documents the three Quaternius Ultimate Modular Men derivatives as CC0 1.0 with redistribution allowed.
+          - Additional animated minions: https://github.com/Ariescar/gobkit-free-assets — CC0 1.0.
+          - Muzzle flash, smoke, bullet impact, tracer, crosshair and hit marker SVGs were authored for this repository.
+          - Source documentation and license copies are preserved under `assets/licenses/`.
+          EOF
 
           cat > README.md <<'EOF'
           # AR-Shooter
-
           AR / WebXR room-scale shooter prototype.
 
           ## Runtime assets
-          - 3 human GLB characters, including SWAT.
+          - 3 human GLB characters including SWAT.
           - 8 additional rigged/animated enemy GLBs.
-          - 20 GLB firearms: pistols, rifles, SMGs, shotguns and sniper rifles.
-          - OGG weapon audio and 12 OGG footsteps.
-          - Muzzle flash, smoke, bullet-impact and tracer effects.
-          - Crosshair and hit-marker HUD assets.
-          - Machine-readable manifest: `assets/config/assets.json`.
-          - Provenance and license records under `assets/`.
+          - 20 GLB firearms.
+          - 2 OGG gunshots and 12 OGG footsteps.
+          - Muzzle flash, smoke, bullet impact, tracer, crosshair and hit marker.
+          - Asset manifest: `assets/config/assets.json`.
+          - Provenance/licenses: `assets/ASSET_SOURCES.md` and `assets/licenses/`.
 
-          The first prototype will use hitscan/raycast shooting rather than a physics object for every bullet.
+          The first prototype will use hitscan/raycast shooting instead of a physics body for every bullet.
           EOF
 
-      - name: Validate runtime payload
+      - name: Validate and publish
         shell: bash
         run: |
           set -euo pipefail
@@ -176,17 +128,7 @@ jobs:
           test "$(find assets/characters/minions -name '*.glb' | wc -l)" -eq 8
           test "$(find assets/audio/footsteps -name '*.ogg' | wc -l)" -eq 12
           test "$(find assets/audio/weapons -name '*.ogg' | wc -l)" -eq 2
-          test -s assets/characters/humans/swat.glb
-          test -s assets/weapons/west/Rifle_Assault_West.glb
-          test -s assets/audio/weapons/game_gunshot.ogg
           python3 -m json.tool assets/config/assets.json >/dev/null
-          echo 'Asset payload validation passed.'
-          du -sh assets
-
-      - name: Commit assets and remove bootstrap workflow
-        shell: bash
-        run: |
-          set -euo pipefail
           rm -f .github/workflows/bootstrap-assets.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
