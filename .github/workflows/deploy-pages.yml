@@ -1,0 +1,50 @@
+name: Deploy to GitHub Pages
+
+# GitHub Pages, by default, serves the repository's raw files - it has no
+# idea this is a Vite app that needs bundling (bare imports like `three`
+# only resolve through a bundler, never in a plain browser). This workflow
+# builds the app and deploys the *built* dist/ output instead, so Pages
+# serves working, resolved JS.
+#
+# One-time setup required in the repo: Settings -> Pages -> Build and
+# deployment -> Source -> "GitHub Actions" (instead of "Deploy from a
+# branch"). Once that's set, every push to main re-deploys automatically.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

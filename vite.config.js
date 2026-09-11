@@ -5,6 +5,11 @@ import { defineConfig } from 'vite';
 // over the local network via a tunnel/https proxy (see README.md).
 export default defineConfig({
   root: '.',
+  // Relative base so the build works from a domain root (custom hosting)
+  // AND from a GitHub Pages project site served under "/<repo-name>/" -
+  // every asset reference in the built output becomes a relative path
+  // instead of assuming "/".
+  base: './',
   // The repository's existing asset tree (assets/**) is served as-is at "/",
   // e.g. assets/characters/humans/swat.glb -> /characters/humans/swat.glb
   publicDir: 'assets',
