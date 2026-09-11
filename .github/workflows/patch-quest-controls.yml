@@ -1,0 +1,105 @@
+name: Patch Quest Controls
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/patch-quest-controls.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/main.js')
+          s = p.read_text(encoding='utf-8')
+
+          def replace_once(old, new, label):
+              global s
+              if old not in s:
+                  raise SystemExit(f'missing snippet: {label}')
+              s = s.replace(old, new, 1)
+
+          replace_once(
+          """renderer.xr.enabled = true;\nrenderer.outputColorSpace = THREE.SRGBColorSpace;""",
+          """renderer.xr.enabled = true;\nrenderer.xr.setReferenceSpaceType('local-floor');\nrenderer.outputColorSpace = THREE.SRGBColorSpace;""",
+          'local-floor reference space')
+
+          replace_once(
+          """const controller = renderer.xr.getController(0);\nscene.add(controller);\nconst weaponHolder = new THREE.Group();\nweaponHolder.position.set(0.02, -0.07, -0.09);\nweaponHolder.rotation.set(-0.05, Math.PI, 0);\ncontroller.add(weaponHolder);""",
+          """const controllers = [renderer.xr.getController(0), renderer.xr.getController(1)];\nfor (const xrController of controllers) scene.add(xrController);\nlet activeController = controllers[0];\nconst weaponHolder = new THREE.Group();\nweaponHolder.position.set(0.025, -0.07, -0.09);\nweaponHolder.rotation.set(-0.05, Math.PI, 0);\nactiveController.add(weaponHolder);\nconst xrButtonState = new Map();""",
+          'dual controllers')
+
+          replace_once(
+          """function getPlayerPosition(target = new THREE.Vector3()) {\n  if (renderer.xr.isPresenting) return renderer.xr.getCamera(camera).getWorldPosition(target);\n  return camera.getWorldPosition(target);\n}\n\nasync function equipWeapon(index, resetAmmo = true) {""",
+          """function getPlayerPosition(target = new THREE.Vector3()) {\n  if (renderer.xr.isPresenting) return renderer.xr.getCamera(camera).getWorldPosition(target);\n  return camera.getWorldPosition(target);\n}\n\nfunction handLabel(controller) {\n  const hand = controller?.userData?.handedness;\n  if (hand === 'right') return 'اليمنى';\n  if (hand === 'left') return 'اليسرى';\n  return 'المختارة';\n}\n\nfunction setActiveController(controller, announce = false) {\n  if (!controller) return;\n  const changed = activeController !== controller || weaponHolder.parent !== controller;\n  activeController = controller;\n  controller.add(weaponHolder);\n  const leftHand = controller.userData.handedness === 'left';\n  weaponHolder.position.set(leftHand ? -0.025 : 0.025, -0.07, -0.09);\n  weaponHolder.rotation.set(-0.05, Math.PI, 0);\n  if (announce && changed && arenaPlaced) showMessage(`السلاح في اليد ${handLabel(controller)}`, 1100);\n}\n\nfunction cycleWeapon(controller = activeController) {\n  setActiveController(controller, false);\n  equipWeapon(state.weaponIndex + 1, true);\n  showMessage('تم تغيير السلاح', 750);\n}\n\nasync function equipWeapon(index, resetAmmo = true) {""",
+          'active hand helpers')
+
+          replace_once(
+          """  root.position.copy(position);\n  root.rotation.y = Math.random() * Math.PI * 2;\n  root.add(model);\n  scene.add(root);""",
+          """  root.position.copy(position);\n  root.rotation.y = Math.random() * Math.PI * 2;\n  root.add(model);\n  scene.add(root);\n  // Final world-space correction: keep the character's lowest visible point on the detected floor.\n  root.updateMatrixWorld(true);\n  const groundBox = new THREE.Box3().setFromObject(root);\n  if (Number.isFinite(groundBox.min.y)) root.position.y += position.y - groundBox.min.y;""",
+          'enemy ground snap')
+
+          replace_once(
+          """    enemy.root.rotation.y = Math.atan2(tmpVec2.x, tmpVec2.z) + Math.PI;""",
+          """    // The SWAT mesh faces +Z. Point that forward axis toward the player.\n    enemy.root.rotation.y = Math.atan2(tmpVec2.x, tmpVec2.z);""",
+          'enemy facing')
+
+          replace_once(
+          """function placeArena(point) {\n  placementPoint.copy(point);\n  placementPoint.y = point.y;""",
+          """function placeArena(point) {\n  placementPoint.copy(point);\n  // Quest uses local-floor reference space, where Y=0 is the physical floor.\n  placementPoint.y = isAR ? 0 : point.y;""",
+          'floor height')
+
+          replace_once(
+          """function setupARButton() {\n  const button = ARButton.createButton(renderer, {\n    requiredFeatures: ['hit-test'],\n    optionalFeatures: ['dom-overlay', 'local-floor'],""",
+          """function setupARButton() {\n  const button = ARButton.createButton(renderer, {\n    requiredFeatures: ['hit-test', 'local-floor'],\n    optionalFeatures: ['dom-overlay'],""",
+          'AR features')
+
+          old_select = """controller.addEventListener('select', () => {\n  if (!isAR) return;\n  if (!arenaPlaced) {\n    if (reticle.visible) {\n      tmpVec.setFromMatrixPosition(reticle.matrix);\n      placeArena(tmpVec);\n    } else {\n      showMessage('حرّك الجهاز حتى يتم اكتشاف سطح الأرض');\n    }\n    return;\n  }\n  shoot();\n});"""
+          new_select = """for (const xrController of controllers) {\n  xrController.addEventListener('connected', (event) => {\n    xrController.userData.inputSource = event.data;\n    xrController.userData.handedness = event.data.handedness || 'none';\n    // Prefer the right hand on connection, but either hand can take control at any time.\n    if (event.data.handedness === 'right') setActiveController(xrController, false);\n  });\n\n  xrController.addEventListener('disconnected', () => {\n    xrController.userData.inputSource = null;\n    xrController.userData.handedness = 'none';\n  });\n\n  xrController.addEventListener('squeeze', () => {\n    if (!isAR) return;\n    setActiveController(xrController, true);\n  });\n\n  xrController.addEventListener('select', () => {\n    if (!isAR) return;\n    setActiveController(xrController, arenaPlaced);\n    if (!arenaPlaced) {\n      if (reticle.visible) {\n        tmpVec.setFromMatrixPosition(reticle.matrix);\n        placeArena(tmpVec);\n      } else {\n        showMessage('حرّك الجهاز حتى يتم اكتشاف سطح الأرض');\n      }\n      return;\n    }\n    shoot();\n  });\n}\n\nfunction updateXRButtons() {\n  if (!isAR || !renderer.xr.isPresenting) return;\n  for (let index = 0; index < controllers.length; index++) {\n    const xrController = controllers[index];\n    const gamepad = xrController.userData.inputSource?.gamepad;\n    if (!gamepad?.buttons) continue;\n\n    const previous = xrButtonState.get(index) || { switchWeapon: false, reload: false };\n    // Quest Touch: thumbstick click or A/X cycles weapons; B/Y reloads.\n    const switchWeapon = Boolean(gamepad.buttons[3]?.pressed || gamepad.buttons[4]?.pressed);\n    const reloadPressed = Boolean(gamepad.buttons[5]?.pressed);\n\n    if (switchWeapon && !previous.switchWeapon && arenaPlaced && !gameEnded) {\n      setActiveController(xrController, true);\n      cycleWeapon(xrController);\n    }\n    if (reloadPressed && !previous.reload && arenaPlaced && !gameEnded) {\n      setActiveController(xrController, true);\n      reload();\n    }\n\n    xrButtonState.set(index, { switchWeapon, reload: reloadPressed });\n  }\n}"""
+          replace_once(old_select, new_select, 'Quest controller events')
+
+          replace_once(
+          """ui.weaponButton.addEventListener('click', () => equipWeapon(state.weaponIndex + 1, true));""",
+          """ui.weaponButton.addEventListener('click', () => cycleWeapon(activeController));""",
+          'HUD weapon button')
+
+          replace_once(
+          """  updateHitTest(frame);\n  updateEnemies(delta);\n  renderer.render(scene, camera);""",
+          """  updateHitTest(frame);\n  updateXRButtons();\n  updateEnemies(delta);\n  renderer.render(scene, camera);""",
+          'button polling')
+
+          replace_once(
+          """  showMessage('وجّه المؤشر الدائري إلى الأرض واضغط الزناد للتثبيت', 3600);""",
+          """  xrButtonState.clear();\n  showMessage('وجّه المؤشر للأرض واضغط الزناد. بعدها: الزناد إطلاق، Grip ينقل السلاح بين اليدين، A/X أو ضغط العصا يغيّر السلاح، B/Y تلقيم', 5200);""",
+          'AR instructions')
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Validate JavaScript
+        run: node --check src/main.js
+
+      - name: Publish patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/patch-quest-controls.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix Quest controls, enemy ground alignment and facing'
+          git push origin HEAD:main
