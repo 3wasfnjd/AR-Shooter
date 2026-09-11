@@ -33,24 +33,54 @@ where your furniture actually is (see **Known simplifications** below).
 
 ## Controls
 
-- **Right trigger**: fire the held weapon (also confirms menus).
-- **Left thumbstick, flick left/right**: cycle weapon (Pistol → SMG →
-  Assault Rifle → Shotgun → Sniper).
-- **Left "A" button**: reload.
-- The left wrist carries a status panel (weapon, ammo, wave, score, health).
+Controls follow whichever hand is currently holding the gun (default:
+right), not a fixed hand — see the hand-swap control below.
+
+- **Gun-hand trigger**: fire the held weapon (also confirms menus).
+- **Off-hand thumbstick flick, or off-hand "B"**: cycle weapon (Pistol →
+  SMG → Assault Rifle → Shotgun → Sniper).
+- **Off-hand "A"**: reload.
+- **Either thumbstick click**: swap which hand holds the gun.
+- **Hold both triggers ~0.6s**: toggle weapon-grip calibration (see
+  below). Hold again to exit.
+- The off-hand wrist carries a status panel (weapon, ammo, wave, score,
+  health) and always follows whichever hand is currently the off-hand.
 
 At the start of a session you're in a weapon-select browse: cycle through
-weapons with the left stick (the actual 3D model updates in your hand so
-you can look it over), then pull the right trigger to confirm and start
+weapons (the actual 3D model updates in your hand so you can look it
+over), then pull the trigger to confirm and start
 Wave 1.
+
+### Calibrating the weapon grip
+
+Every weapon's hand offset/orientation started as a guess (see **Known
+simplifications**) — feedback from the first on-device test was that guess
+was visibly wrong. Rather than guess again blindly, hold both triggers for
+about 0.6 seconds to enter **calibration mode**: firing is disabled, and
+you can nudge the currently-held weapon in real time:
+
+- **Off-hand thumbstick**: move left/right and forward/back.
+- **Gun-hand thumbstick**: move up/down, and yaw (rotate around vertical).
+- **Off-hand A / B**: pitch down / up in 15° steps.
+- **Gun-hand A / B**: roll in 15° steps.
+
+The wrist panel shows the live `pos:[x,y,z] rot:[x,y,z]` numbers as you
+adjust. Once a weapon looks right in-hand, read those numbers off and drop
+them into that weapon's `grip: { pos: [...], rotDeg: [...] }` entry in
+`src/weapons/WeaponDefs.js` (each weapon needs calibrating separately —
+cycling weapons mid-calibration keeps you in calibration mode so you can
+do all five in one session). Hold both triggers again to exit.
 
 ## How this maps to the brief
 
 - **Miniature realistic soldiers, not cartoonish/robotic/full-size** —
   `assets/characters/humans/swat.glb` is scaled at runtime (via bounding-box
   measurement, not a hardcoded factor, so it's robust to the source asset's
-  authored units) to 0.36–0.40m; `swat_elite_quest.glb` to 0.42–0.46m. See
-  `src/enemies/SoldierTypes.js`.
+  authored units) to 0.42–0.46m; `swat_elite_quest.glb` to 0.46–0.50m
+  (nudged above the brief's 35-45cm after on-device testing showed smaller
+  figures read as near-invisible a couple meters out in passthrough), and
+  the engagement/spawn radius was tightened to keep them close enough to
+  stay readable. See `src/enemies/SoldierTypes.js` and `EnemyManager`.
 - **Both SWAT characters used, Elite reads as higher-tier** — `swat.glb` is
   the fully animated rank-and-file soldier; `swat_elite_quest.glb` (which
   ships as a static, un-animated Sketchfab mesh with its rifle fused into
@@ -128,13 +158,15 @@ building this without a live on-device preview or Quest Scene API access:
   `EnemyManager.coverPoints` from the Scene API instead.
 - **Weapon/mesh forward-axis orientation is heuristic, not hand-verified.**
   Every glb's "barrel forward" is inferred from its bounding box (longest
-  horizontal axis = barrel), and character "front" is assumed from a
-  configurable `facingOffsetDeg`. If a weapon's muzzle flash appears at the
-  wrong end, or soldiers appear to walk backwards toward the player, these
-  are the first two knobs to flip — see the comments atop
-  `src/weapons/WeaponDefs.js` and `SOLDIER_TYPES` in
-  `src/enemies/SoldierTypes.js`. This wasn't possible to verify without a
-  Quest headset in the loop.
+  horizontal axis = barrel, grip pivot ~38% back from the muzzle end), and
+  character "front" is assumed from a configurable `facingOffsetDeg`. This
+  guess was confirmed wrong on the first on-device test, so rather than
+  keep guessing blind, there's now an in-headset **calibration mode** (hold
+  both triggers ~0.6s — see the README section above) to nudge the grip
+  into place live and read back exact numbers for `WeaponDefs.js`. If
+  soldiers appear to walk backwards toward the player, `facingOffsetDeg` in
+  `src/enemies/SoldierTypes.js` is the equivalent knob for that (no
+  in-headset tool for it yet).
 - **`swat_elite_quest.glb` ships with zero animation clips** (it's a static
   bind-pose Sketchfab mesh with its rifle fused into the geometry, per
   `assets/config/model_metadata.json`). Rather than treat this as broken,
