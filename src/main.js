@@ -24,7 +24,7 @@ camera.position.set(0, 1.62, 3.4);
 camera.lookAt(0, 1.1, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
@@ -105,7 +105,10 @@ const enemies = [];
 const audioCache = new Map();
 
 const TOY_SOLDIER_HEIGHT = 0.42;
+const ELITE_TOY_HEIGHT = 0.38;
 const GROUND_SINK = 0.008;
+const MAX_ACTIVE_ENEMIES = 4;
+const CORPSE_LIFETIME_MS = 3200;
 const ELITE_SWAT_PATH = 'assets/characters/humans/swat_elite_quest.glb';
 
 const weaponProfiles = [
@@ -135,13 +138,18 @@ function preloadAudio(url) {
   audioCache.set(url, audio);
 }
 
+let activeAudioCount = 0;
 function playSound(url, volume = 0.7, rate = 1) {
   const base = audioCache.get(url);
-  if (!base) return;
+  if (!base || activeAudioCount >= 10) return;
   const audio = base.cloneNode();
   audio.volume = volume;
   audio.playbackRate = rate;
-  audio.play().catch(() => {});
+  activeAudioCount += 1;
+  const release = () => { activeAudioCount = Math.max(0, activeAudioCount - 1); };
+  audio.addEventListener('ended', release, { once: true });
+  audio.addEventListener('error', release, { once: true });
+  audio.play().catch(() => release());
 }
 
 function normalizeCharacter(model, targetHeight = TOY_SOLDIER_HEIGHT) {
@@ -335,16 +343,21 @@ function clearEnemies() {
   while (enemies.length) {
     const enemy = enemies.pop();
     enemy.mixer?.stopAllAction();
+    if (enemy.removeTimer) clearTimeout(enemy.removeTimer);
     scene.remove(enemy.root);
   }
 }
 
 function createEnemy(position, index = 0) {
   const eliteReady = Boolean(eliteTemplate);
-  const useElite = eliteReady && (index === 0 || (state.wave > 1 && Math.random() < 0.32));
+  const useElite = eliteReady && index === 0;
   const template = useElite ? eliteTemplate : enemyTemplate;
   const clips = useElite ? [] : standardClips;
   const model = SkeletonUtils.clone(template);
+  if (useElite) {
+    normalizeCharacter(model, ELITE_TOY_HEIGHT);
+    model.traverse((obj) => { obj.visible = true; if (obj.isMesh) obj.frustumCulled = false; });
+  }
   const root = new THREE.Group();
   root.position.copy(position);
   root.rotation.y = Math.random() * Math.PI * 2;
@@ -378,10 +391,12 @@ function createEnemy(position, index = 0) {
     strafeSign: index % 2 ? 1 : -1
   };
 
+  enemy.hitMeshes = [];
   model.traverse((child) => {
     if (child.isMesh) {
       child.frustumCulled = false;
       child.userData.enemyRef = enemy;
+      if (!child.userData.enemyWeapon) enemy.hitMeshes.push(child);
     }
   });
 
@@ -394,7 +409,7 @@ function createEnemy(position, index = 0) {
 function spawnWave() {
   if (!arenaPlaced || gameEnded) return;
   clearTimeout(nextWaveTimer);
-  const count = Math.min(2 + state.wave, 6);
+  const count = Math.min(2 + state.wave, MAX_ACTIVE_ENEMIES);
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + Math.random() * 0.7;
     const radius = 1.25 + Math.random() * 1.45;
@@ -442,12 +457,12 @@ function killEnemy(enemy) {
 
   // Vary the final lean slightly and keep bodies visible for several seconds.
   enemy.hitTilt += (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.08);
-  setTimeout(() => {
+  enemy.removeTimer = setTimeout(() => {
     scene.remove(enemy.root);
     const idx = enemies.indexOf(enemy);
     if (idx >= 0) enemies.splice(idx, 1);
     startNextWaveIfReady();
-  }, 7800 + Math.random() * 2200);
+  }, CORPSE_LIFETIME_MS);
 }
 
 function hitEnemy(enemy, point, shotDirection = null) {
@@ -554,9 +569,7 @@ function shoot() {
   raycaster.far = 16;
   const liveMeshes = [];
   for (const enemy of enemies) {
-    if (!enemy.dead) enemy.model.traverse((obj) => {
-      if (obj.isMesh && !obj.userData.enemyWeapon) liveMeshes.push(obj);
-    });
+    if (!enemy.dead && enemy.hitMeshes) liveMeshes.push(...enemy.hitMeshes);
   }
   const hits = raycaster.intersectObjects(liveMeshes, false);
   const end = hits.length ? hits[0].point.clone() : origin.clone().addScaledVector(direction, 9);
@@ -893,10 +906,23 @@ async function init() {
     try {
       eliteGltf = await loadGLTF(ELITE_SWAT_PATH);
       eliteTemplate = eliteGltf.scene;
-      normalizeCharacter(eliteTemplate, TOY_SOLDIER_HEIGHT);
+      normalizeCharacter(eliteTemplate, ELITE_TOY_HEIGHT);
+      eliteTemplate.traverse((obj) => {
+        obj.visible = true;
+        if (obj.isMesh) {
+          obj.frustumCulled = false;
+          if (obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            for (const mat of mats) {
+              mat.transparent = false;
+              mat.opacity = 1;
+              mat.depthWrite = true;
+            }
+          }
+        }
+      });
       const testRig = createElitePoseRig(eliteTemplate);
-      if (Object.keys(testRig.bones).length < 8) throw new Error('Elite Mixamo rig bones not found');
-      console.info(`Elite toy soldier ready with ${Object.keys(testRig.bones).length} procedural bones`);
+      console.info(`Elite toy soldier loaded with ${Object.keys(testRig.bones).length} procedural bones`);
     } catch (error) {
       console.warn('Elite SWAT disabled; standard toy SWAT remains available', error);
       eliteGltf = null;
