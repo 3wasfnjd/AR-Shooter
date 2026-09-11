@@ -1,0 +1,57 @@
+name: Inspect SWAT Rigs
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-rigs.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Extract rig metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, struct
+          from pathlib import Path
+
+          def read_glb(path):
+              data=Path(path).read_bytes()
+              if data[:4] != b'glTF': raise SystemExit(f'Not GLB: {path}')
+              length, ctype = struct.unpack_from('<II', data, 12)
+              if ctype != 0x4E4F534A: raise SystemExit('Missing JSON chunk')
+              doc=json.loads(data[20:20+length].decode('utf-8'))
+              nodes=doc.get('nodes',[])
+              skins=[]
+              for skin in doc.get('skins',[]):
+                  joints=skin.get('joints',[])
+                  skins.append([nodes[j].get('name', f'node_{j}') for j in joints])
+              return {
+                  'nodes':[n.get('name', f'node_{i}') for i,n in enumerate(nodes)],
+                  'skins':skins,
+                  'animations':[a.get('name','') for a in doc.get('animations',[])],
+              }
+
+          out={
+            'swat': read_glb('assets/characters/humans/swat.glb'),
+            'elite': read_glb('assets/characters/humans/swat_elite_quest.glb'),
+          }
+          Path('assets/config/rig_metadata.json').write_text(json.dumps(out, indent=2, ensure_ascii=False))
+          PY
+      - name: Publish metadata
+        shell: bash
+        run: |
+          rm -f .github/workflows/inspect-rigs.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add SWAT rig metadata for animation retargeting'
+          git push origin HEAD:main
