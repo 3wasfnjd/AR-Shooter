@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { instantiateGLTF } from '../assets/AssetLoader.js';
 import { autoOrientGun } from '../weapons/gunOrient.js';
 import { ANIM, HITZONE_MULTIPLIER } from './SoldierTypes.js';
-import { damp, dampAngle, clamp, randRange, scaleToHeight } from '../utils/math.js';
+import { damp, dampAngle, clamp, randRange, scaleRigToHeight, lowestWorldY } from '../utils/math.js';
 import { AUDIO } from '../assets/paths.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -74,10 +74,9 @@ export class Soldier {
 
   async load(spawnPos) {
     const { scene: model, animations } = await instantiateGLTF(this.type.model);
-    scaleToHeight(model, this.height);
+    scaleRigToHeight(model, this.height, this.type.heightBones.top, this.type.heightBones.bottom);
+    model.position.y -= lowestWorldY(model, this.type.heightBones.bottom); // feet at local origin
     model.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(model);
-    model.position.y -= box.min.y; // feet at local origin
 
     this.facingPivot.add(model);
     this.model = model;

@@ -68,6 +68,17 @@
         color: #6f8296;
         min-height: 16px;
       }
+      #preview-link {
+        margin-top: 14px;
+        background: none;
+        border: 1px solid #3a4a58;
+        color: #a9bccb;
+        border-radius: 8px;
+        padding: 9px 18px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #preview-link:hover { border-color: #ff9d2e; color: #ffb347; }
       #overlay.hidden { display: none; }
     </style>
   </head>
@@ -82,6 +93,7 @@
       </p>
       <button id="enter-ar" disabled>Checking WebXR&hellip;</button>
       <div id="status-line"></div>
+      <button id="preview-link">Preview in browser (no headset)</button>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

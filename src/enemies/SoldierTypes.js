@@ -40,15 +40,30 @@ export const SOLDIER_TYPES = {
     // bump is a cheap complementary fix. Readability wins over the exact
     // lower bound here.
     heightRange: [0.5, 0.55],
+    // Measuring height from raw mesh geometry (Box3.setFromObject) is
+    // wrong for a SkinnedMesh: the geometry's vertex buffer is in an
+    // unposed reference space skinning deforms at render time, unrelated
+    // to final on-screen size - this was silently producing a ~100x-too-
+    // small scale factor (confirmed via the desktop preview + a manual
+    // bone-position bbox dump; visible height was ~6mm, not ~50cm).
+    // Bones themselves aren't skinned meshes, so their world positions
+    // (top of skull to toe tip) give the real bind-pose height instead.
+    // NOTE: `assets/config/rig_metadata.json` documents these bone names
+    // WITH dots (e.g. "UpperArm.L", "PT.L_end") - that's apparently taken
+    // from the pre-export source, not the actual glb. GLTFLoader sees them
+    // without dots at runtime (confirmed by traversing a live-loaded
+    // instance): "UpperArmL", "PTL_end", etc. Trust this list, not the
+    // rig_metadata file, if the two ever disagree again.
+    heightBones: { top: 'Head_end', bottom: ['PTL_end', 'PTR_end', 'FootL_end', 'FootR_end'] },
     boneNames: {
       head: 'Head',
       chest: 'Chest',
       hips: 'Hips',
-      armL: 'UpperArm.L',
-      armR: 'UpperArm.R',
-      legL: 'UpperLeg.L',
-      legR: 'UpperLeg.R',
-      weaponHand: 'Wrist.R'
+      armL: 'UpperArmL',
+      armR: 'UpperArmR',
+      legL: 'UpperLegL',
+      legR: 'UpperLegR',
+      weaponHand: 'WristR'
     },
     weaponModel: WEAPON_MODELS.enemyRifle,
     weaponGrip: { pos: [0, 0.01, 0.02], rotDeg: [0, 90, 90] },
@@ -70,15 +85,22 @@ export const SOLDIER_TYPES = {
     model: CHARACTERS.elite,
     animated: false,
     heightRange: [0.55, 0.6],
+    // Same bone-based measurement as `regular` (see its comment) - the
+    // Elite is also a SkinnedMesh even though it has no animation clips.
+    // Like `regular`, GLTFLoader strips the separator from these at
+    // runtime - "mixamorig:Head_05" (rig_metadata.json / Mixamo's own
+    // convention) loads as "mixamorigHead_05". Confirmed by traversing a
+    // live-loaded instance; trust this list over rig_metadata.json.
+    heightBones: { top: 'mixamorigHeadTop_End_06', bottom: ['mixamorigLeftToe_End_058', 'mixamorigRightToe_End_063'] },
     muzzleNodeNames: ['frontSIght_low', 'barrel_low', 'topGun_low'],
     boneNamesFallback: {
-      head: 'mixamorig:Head_05',
-      chest: 'mixamorig:Spine1_03',
-      hips: 'mixamorig:Hips_01',
-      armL: 'mixamorig:LeftArm_08',
-      armR: 'mixamorig:RightArm_031',
-      legL: 'mixamorig:LeftUpLeg_054',
-      legR: 'mixamorig:RightUpLeg_059'
+      head: 'mixamorigHead_05',
+      chest: 'mixamorigSpine1_03',
+      hips: 'mixamorigHips_01',
+      armL: 'mixamorigLeftArm_08',
+      armR: 'mixamorigRightArm_031',
+      legL: 'mixamorigLeftUpLeg_054',
+      legR: 'mixamorigRightUpLeg_059'
     },
     stats: {
       health: 130,

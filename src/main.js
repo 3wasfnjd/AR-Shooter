@@ -3,6 +3,7 @@ import { Game } from './game/Game.js';
 const appEl = document.getElementById('app');
 const overlay = document.getElementById('overlay');
 const button = document.getElementById('enter-ar');
+const previewButton = document.getElementById('preview-link');
 const statusLine = document.getElementById('status-line');
 
 function setStatus(msg) {
@@ -31,22 +32,43 @@ async function boot() {
   let game;
   try {
     game = new Game(appEl);
+    window.__game = game; // debug console access
   } catch (err) {
     fail('Failed to initialize the WebXR renderer', err);
     return;
   }
 
-  if (!navigator.xr) {
-    button.textContent = 'WebXR not available';
-    setStatus('Open this page in the Meta Quest Browser (not a desktop browser).');
+  setStatus('Loading assets…');
+  const assetsReady = game.preloadAssets();
+
+  // Wired up-front (not gated on WebXR support) so a plain desktop browser
+  // can still preview weapons/soldiers/VFX - see DesktopPreview.js. Only
+  // needs assets loaded, not an AR session.
+  previewButton.addEventListener('click', async () => {
+    previewButton.disabled = true;
+    previewButton.textContent = 'Loading…';
+    try {
+      await assetsReady;
+      game.startPreview();
+      overlay.classList.add('hidden');
+    } catch (err) {
+      console.error(err);
+      previewButton.disabled = false;
+      previewButton.textContent = 'Preview in browser (no headset)';
+      setStatus(`Preview failed${err?.message ? `: ${err.message}` : ''}`);
+    }
+  });
+
+  try {
+    await assetsReady;
+  } catch (err) {
+    fail('Failed to load game assets', err);
     return;
   }
 
-  setStatus('Loading assets…');
-  try {
-    await game.preloadAssets();
-  } catch (err) {
-    fail('Failed to load game assets', err);
+  if (!navigator.xr) {
+    button.textContent = 'WebXR not available';
+    setStatus('Open this page in the Meta Quest Browser for AR, or try the preview below.');
     return;
   }
 
