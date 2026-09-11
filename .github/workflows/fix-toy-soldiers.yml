@@ -1,0 +1,292 @@
+name: Fix Toy Soldiers
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-toy-soldiers.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch runtime
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('src/main.js')
+          s=p.read_text()
+
+          s=s.replace(
+            "import { ELITE_SWAT_PATH, buildEliteAnimationSet } from './elite-rig.js';",
+            "import { createElitePoseRig, setEliteMotionState, updateEliteMotion } from './elite-procedural.js';"
+          )
+
+          s=s.replace(
+            "let eliteClips = [];",
+            "let standardClips = [];"
+          )
+
+          marker="const audioCache = new Map();\n"
+          insert="""const audioCache = new Map();
+
+const TOY_SOLDIER_HEIGHT = 0.42;
+const GROUND_SINK = 0.008;
+const ELITE_SWAT_PATH = 'assets/characters/humans/swat_elite_quest.glb';
+"""
+          if marker not in s: raise SystemExit('audioCache marker missing')
+          s=s.replace(marker, insert, 1)
+
+          s=s.replace(
+            "function normalizeCharacter(model, targetHeight = 1.72) {",
+            "function normalizeCharacter(model, targetHeight = TOY_SOLDIER_HEIGHT) {"
+          )
+          s=s.replace(
+            "  model.position.y -= fixed.min.y;\n  model.updateMatrixWorld(true);\n}\n\nfunction normalizeWeapon",
+            "  model.position.y -= fixed.min.y + GROUND_SINK;\n  model.updateMatrixWorld(true);\n}\n\nfunction makeInPlaceClips(animations = []) {\n  return animations.map((source) => {\n    const clip = source.clone();\n    clip.tracks = clip.tracks.filter((track) => {\n      const name = track.name.toLowerCase();\n      return !(name.includes('hips') && name.endsWith('.position'));\n    });\n    return clip;\n  });\n}\n\nfunction normalizeWeapon"
+          )
+
+          old="""function playEnemyAnimation(enemy, name, loop = true, fade = 0.12) {
+  if (!enemy?.mixer || enemy.dead) return;
+  if (enemy.animName === name && loop) return;
+  const clip = findClip(name, enemy.clips || enemyGltf?.animations || []);
+  if (!clip) return;
+  const next = enemy.mixer.clipAction(clip);
+  next.reset();
+  next.enabled = true;
+  next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+  next.clampWhenFinished = !loop;
+  if (enemy.action && enemy.action !== next) enemy.action.fadeOut(fade);
+  next.fadeIn(fade).play();
+  enemy.action = next;
+  enemy.animName = name;
+}
+"""
+          new="""function playEnemyAnimation(enemy, name, loop = true, fade = 0.12) {
+  if (!enemy || (enemy.dead && name !== 'Death')) return;
+  if (enemy.kind === 'elite') {
+    setEliteMotionState(enemy, name, loop);
+    return;
+  }
+  if (!enemy.mixer) return;
+  if (enemy.animName === name && loop) return;
+  const clip = findClip(name, enemy.clips || standardClips);
+  if (!clip) return;
+  const next = enemy.mixer.clipAction(clip);
+  next.reset();
+  next.enabled = true;
+  next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+  next.clampWhenFinished = !loop;
+  if (enemy.action && enemy.action !== next) enemy.action.fadeOut(fade);
+  next.fadeIn(fade).play();
+  enemy.action = next;
+  enemy.animName = name;
+}
+"""
+          if old not in s: raise SystemExit('playEnemyAnimation block missing')
+          s=s.replace(old,new)
+
+          start=s.index('function createEnemy(position, index = 0) {')
+          end=s.index('\nfunction spawnWave()', start)
+          new_create="""function createEnemy(position, index = 0) {
+  const eliteReady = Boolean(eliteTemplate);
+  const useElite = eliteReady && (index === 0 || (state.wave > 1 && Math.random() < 0.32));
+  const template = useElite ? eliteTemplate : enemyTemplate;
+  const clips = useElite ? [] : standardClips;
+  const model = SkeletonUtils.clone(template);
+  const root = new THREE.Group();
+  root.position.copy(position);
+  root.rotation.y = Math.random() * Math.PI * 2;
+  root.add(model);
+  scene.add(root);
+
+  // Lock the toy's visible feet to the detected physical floor.
+  root.updateMatrixWorld(true);
+  const groundBox = new THREE.Box3().setFromObject(root);
+  if (Number.isFinite(groundBox.min.y)) {
+    root.position.y += position.y - groundBox.min.y - GROUND_SINK;
+  }
+  const floorY = root.position.y;
+
+  const mixer = useElite ? null : new THREE.AnimationMixer(model);
+  const now = performance.now();
+  const enemy = {
+    root, model, mixer, clips, action: null, animName: '',
+    kind: useElite ? 'elite' : 'swat',
+    poseRig: useElite ? createElitePoseRig(model) : null,
+    hp: useElite ? 125 : 100,
+    dead: false,
+    floorY,
+    spawnedAt: now,
+    motionStartedAt: now,
+    hitTilt: 0,
+    speed: (useElite ? 0.55 : 0.62) + Math.min(state.wave, 6) * 0.03 + Math.random() * 0.10,
+    nextAttack: now + 900 + Math.random() * 1200,
+    nextStrafe: now + 700 + Math.random() * 1600,
+    strafeUntil: 0,
+    strafeSign: index % 2 ? 1 : -1
+  };
+
+  model.traverse((child) => {
+    if (child.isMesh) {
+      child.frustumCulled = false;
+      child.userData.enemyRef = enemy;
+    }
+  });
+
+  playEnemyAnimation(enemy, 'Idle_Gun', true, 0.18);
+  enemies.push(enemy);
+  return enemy;
+}
+"""
+          s=s[:start]+new_create+s[end:]
+
+          old="""  const clip = findClip('Death', enemy.clips || enemyGltf?.animations || []);
+  if (clip) {
+    const action = enemy.mixer.clipAction(clip);
+    enemy.action?.fadeOut(0.08);
+    action.reset().setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.timeScale = 0.88 + Math.random() * 0.18;
+    action.fadeIn(0.06).play();
+    enemy.action = action;
+  }
+
+  // Vary the final lean slightly and keep bodies visible for several seconds.
+  enemy.hitTilt += (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.08);
+"""
+          new="""  enemy.deadAt = performance.now();
+  enemy.deathStartZ = enemy.root.rotation.z;
+  enemy.deathLean = (Math.random() > 0.5 ? 1 : -1) * (1.25 + Math.random() * 0.22);
+  if (enemy.kind === 'elite') {
+    setEliteMotionState(enemy, 'Death', false);
+  } else {
+    const clip = findClip('Death', enemy.clips || standardClips);
+    if (clip && enemy.mixer) {
+      const action = enemy.mixer.clipAction(clip);
+      enemy.action?.fadeOut(0.08);
+      action.reset().setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = true;
+      action.timeScale = 0.88 + Math.random() * 0.18;
+      action.fadeIn(0.06).play();
+      enemy.action = action;
+    }
+  }
+
+  // Vary the final lean slightly and keep bodies visible for several seconds.
+  enemy.hitTilt += (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.08);
+"""
+          if old not in s: raise SystemExit('death block missing')
+          s=s.replace(old,new)
+
+          old="""    enemy.hitTilt = side * (0.10 + Math.random() * 0.08);
+    enemy.root.position.addScaledVector(shotDirection, 0.025 + Math.random() * 0.02);
+"""
+          new="""    enemy.hitTilt = side * (0.10 + Math.random() * 0.08);
+    const push = shotDirection.clone();
+    push.y = 0;
+    if (push.lengthSq() > 0.0001) push.normalize();
+    enemy.root.position.addScaledVector(push, 0.015 + Math.random() * 0.012);
+    enemy.root.position.y = enemy.floorY;
+"""
+          if old not in s: raise SystemExit('hit push block missing')
+          s=s.replace(old,new)
+
+          old="""  for (const enemy of enemies) {
+    enemy.mixer.update(delta);
+    if (enemy.dead) continue;
+
+    const pos = enemy.root.position;
+"""
+          new="""  for (const enemy of enemies) {
+    if (enemy.kind === 'elite') updateEliteMotion(enemy, now);
+    else enemy.mixer?.update(delta);
+
+    // Never allow root motion, hit recoil, or animation data to lift a toy off the floor.
+    enemy.root.position.y = enemy.floorY;
+    if (enemy.dead) {
+      if (enemy.kind === 'elite') {
+        const p = THREE.MathUtils.smoothstep(Math.min((now - enemy.deadAt) / 720, 1), 0, 1);
+        enemy.root.rotation.z = THREE.MathUtils.lerp(enemy.deathStartZ || 0, enemy.deathLean || 1.3, p);
+      }
+      continue;
+    }
+
+    const pos = enemy.root.position;
+"""
+          if old not in s: raise SystemExit('update loop start missing')
+          s=s.replace(old,new)
+
+          old="""    ui.loadingText.textContent = 'تحميل شخصية SWAT...';
+    enemyGltf = await loadGLTF(manifest.recommendedPrototype.enemy);
+    enemyTemplate = enemyGltf.scene;
+    normalizeCharacter(enemyTemplate, 1.20);
+
+    ui.loadingText.textContent = 'تحميل SWAT Elite والحركات...';
+    try {
+      eliteGltf = await loadGLTF(ELITE_SWAT_PATH);
+      eliteTemplate = eliteGltf.scene;
+      normalizeCharacter(eliteTemplate, 1.20);
+      eliteClips = buildEliteAnimationSet(enemyGltf, eliteGltf);
+      console.info(`Elite SWAT ready with ${eliteClips.length} retargeted clips`);
+    } catch (error) {
+      console.warn('Elite SWAT disabled; standard SWAT remains available', error);
+      eliteGltf = null;
+      eliteTemplate = null;
+      eliteClips = [];
+    }
+"""
+          new="""    ui.loadingText.textContent = 'تحميل جنود الألعاب...';
+    enemyGltf = await loadGLTF(manifest.recommendedPrototype.enemy);
+    enemyTemplate = enemyGltf.scene;
+    normalizeCharacter(enemyTemplate, TOY_SOLDIER_HEIGHT);
+    standardClips = makeInPlaceClips(enemyGltf.animations || []);
+
+    ui.loadingText.textContent = 'تحميل SWAT Elite المصغّر...';
+    try {
+      eliteGltf = await loadGLTF(ELITE_SWAT_PATH);
+      eliteTemplate = eliteGltf.scene;
+      normalizeCharacter(eliteTemplate, TOY_SOLDIER_HEIGHT);
+      const testRig = createElitePoseRig(eliteTemplate);
+      if (Object.keys(testRig.bones).length < 8) throw new Error('Elite Mixamo rig bones not found');
+      console.info(`Elite toy soldier ready with ${Object.keys(testRig.bones).length} procedural bones`);
+    } catch (error) {
+      console.warn('Elite SWAT disabled; standard toy SWAT remains available', error);
+      eliteGltf = null;
+      eliteTemplate = null;
+    }
+"""
+          if old not in s: raise SystemExit('init character block missing')
+          s=s.replace(old,new)
+
+          p.write_text(s)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/main.js
+          node --check src/elite-procedural.js
+          test -s assets/characters/humans/swat_elite_quest.glb
+          grep -q "TOY_SOLDIER_HEIGHT = 0.42" src/main.js
+          grep -q "updateEliteMotion" src/main.js
+          grep -q "position.y = enemy.floorY" src/main.js
+
+      - name: Publish
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-toy-soldiers.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Shrink soldiers to toy scale and fix Elite motion and grounding'
+          git push origin HEAD:main
