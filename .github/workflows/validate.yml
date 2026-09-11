@@ -1,0 +1,29 @@
+name: Validate AR Shooter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: node --check src/main.js
+      - name: Check required runtime files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s index.html
+          test -s styles.css
+          test -s assets/config/assets.json
+          test -s assets/characters/humans/swat.glb
+          test -s assets/weapons/west/Rifle_Assault_West.glb
+          python3 -m json.tool assets/config/assets.json >/dev/null
+          echo "Static validation passed."
