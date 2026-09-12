@@ -150,7 +150,12 @@ do all five in one session). Hold both triggers again to exit.
   smoke, tracers and impact sparks (`src/vfx/EffectsSystem.js`) all reuse
   `assets/effects/*.svg` as sprite/quad textures, sized/timed per weapon;
   recoil is a per-shot impulse damped back to rest; haptics intensity/
-  duration also differ per weapon (`WeaponDefs.js`).
+  duration also differ per weapon (`WeaponDefs.js`). Every player shot also
+  pulses a real-time `PointLight` at the muzzle (capped at 3 concurrent,
+  same pooling tradeoff as the portal breach lights, so sustained automatic
+  fire doesn't tank frame rate) so the flash actually lights the room
+  instead of just being a bright sprite, and ejects a tumbling brass shell
+  casing with gravity from the grip area.
 - **Varied hit reactions and deaths** — hit zone (head/chest/hips/arms/
   legs) comes from closest-hurtbox raycasting, with a headshot damage
   multiplier; `HitRecieve`/`HitRecieve_2` are chosen by front/side, and
@@ -207,6 +212,19 @@ building this without a live on-device preview or Quest Scene API access:
     no longer meaningful. There's still an in-headset **calibration
     mode** (hold both triggers ~0.6s) for whatever small correction is
     left; see the README section above.
+    - A first version of `orientGunByBones`'s roll correction built a
+      basis matrix directly from the forward/up vectors and called
+      `setFromRotationMatrix` on it - reported on-device as every weapon
+      (player and enemy) pointing backward. That basis mapped the
+      *canonical* axes onto (forward, up, right), which isn't the same
+      problem as "rotate this specific forward vector onto local -Z";
+      confirmed by an earlier debug capture that had the muzzle bone
+      landing at *positive* local Z instead of the negative Z the rest of
+      the codebase treats as "forward" (`WeaponSystem._fire`'s
+      `_fwd.set(0,0,-1).applyQuaternion(...)`). Fixed by building the
+      rotation with `THREE.Matrix4.lookAt(origin, fwd, up)` instead - the
+      same "camera looks down -Z" primitive Three.js already ships,
+      applied to an arbitrary forward vector rather than a camera.
   - The enemy rifle attaches to a bone (`WristR`) deep in the soldier's
     own skeleton, which turned out to carry its own baked ~100x scale
     left over from the source rig's FBX/Blender export pipeline -

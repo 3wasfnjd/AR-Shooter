@@ -2,10 +2,14 @@ import * as THREE from 'three';
 import { loadTexture } from '../assets/AssetLoader.js';
 import { VFX } from '../assets/paths.js';
 import { ObjectPool } from '../utils/ObjectPool.js';
+import { randRange } from '../utils/math.js';
 
 const _q = new THREE.Quaternion();
 const _up = new THREE.Vector3(0, 1, 0);
 const _dir = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _back = new THREE.Vector3();
+const MAX_MUZZLE_LIGHTS = 3;
 
 /**
  * Pools every recurring visual (muzzle flash, smoke puff, tracer streak,
@@ -49,6 +53,22 @@ export class EffectsSystem {
       () => this._makeTracer(),
       (m) => this._hide(m),
       16
+    );
+    this.shellPool = new ObjectPool(() => this._makeShell(), (s) => this._hide(s), 24);
+    // Real-time PointLights are expensive on mobile GPUs (same tradeoff as
+    // PortalEffect.js's breach lights): cap concurrent muzzle flashes that
+    // get a light, sustained automatic fire just skips the light on the
+    // sprite-only overflow rather than tanking frame rate.
+    this.lightPool = new ObjectPool(
+      () => {
+        const light = new THREE.PointLight(0xffb877, 0, 0.9, 2);
+        this.scene.add(light);
+        return light;
+      },
+      (l) => {
+        l.intensity = 0;
+      },
+      MAX_MUZZLE_LIGHTS
     );
   }
 
@@ -101,6 +121,24 @@ export class EffectsSystem {
     return mesh;
   }
 
+  _makeShell() {
+    // Brass casing: a short hexagonal cylinder reads fine at the couple-cm
+    // size it's actually seen at, and is far cheaper than a real mesh.
+    const geo = new THREE.CylinderGeometry(0.0032, 0.0032, 0.013, 6);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xd8a53d,
+      metalness: 0.75,
+      roughness: 0.35,
+      transparent: true,
+      toneMapped: false
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.visible = false;
+    mesh.renderOrder = 6;
+    this.scene.add(mesh);
+    return mesh;
+  }
+
   _hide(obj) {
     obj.visible = false;
   }
@@ -109,7 +147,7 @@ export class EffectsSystem {
     this.active.push({ pool, obj, life, age: 0, onUpdate });
   }
 
-  /** Bright flash at the muzzle. `size` and `life` let each weapon feel different. */
+  /** Bright flash at the muzzle, plus a brief real-time light pulse (capped, see MAX_MUZZLE_LIGHTS) for actual scene illumination instead of just an additive sprite. */
   muzzleFlash(position, quaternion, { size = 0.06, life = 0.05, color = 0xffffff } = {}) {
     if (!this.flashPool) return;
     const sprite = this.flashPool.acquire();
@@ -124,6 +162,48 @@ export class EffectsSystem {
       const k = 1 - t;
       sprite.material.opacity = k;
       sprite.scale.setScalar(size * (1 + t * 1.6));
+    });
+
+    if (this.lightPool && this.lightPool.active.size < MAX_MUZZLE_LIGHTS) {
+      const light = this.lightPool.acquire();
+      light.position.copy(position);
+      light.intensity = 6 * (size / 0.06);
+      const lightLife = life * 2.4;
+      this._track(this.lightPool, light, lightLife, (t) => {
+        light.intensity = 6 * (size / 0.06) * (1 - t) * (1 - t);
+      });
+    }
+  }
+
+  /** Ejects a brass casing sideways from the weapon's ejection port with a bit of tumble and gravity. `side` flips it for a left-handed grip. */
+  shellEject(position, quaternion, { side = 1 } = {}) {
+    if (!this.shellPool) return;
+    const shell = this.shellPool.acquire();
+    shell.visible = true;
+    shell.position.copy(position);
+    shell.quaternion.copy(quaternion);
+    shell.rotation.z += Math.PI / 2; // cylinder axis -> weapon's local X (ejects sideways, not forward)
+    shell.material.opacity = 1;
+
+    _right.set(1, 0, 0).applyQuaternion(quaternion).multiplyScalar(side);
+    _dir.set(0, 1, 0).applyQuaternion(quaternion);
+    _back.set(0, 0, 1).applyQuaternion(quaternion); // +Z is "back" since the muzzle convention is -Z forward
+
+    const vel = _right
+      .clone()
+      .multiplyScalar(0.75 + Math.random() * 0.5)
+      .addScaledVector(_dir, 0.55 + Math.random() * 0.3)
+      .addScaledVector(_back, 0.15 + Math.random() * 0.2);
+    const spin = new THREE.Vector3(randRange(-25, 25), randRange(-25, 25), randRange(-25, 25));
+    const life = 0.5 + Math.random() * 0.2;
+
+    this._track(this.shellPool, shell, life, (t, dt = 0.016) => {
+      vel.y -= 2.4 * dt; // gravity, tuned for a ~40cm-scale room rather than real-world 1x
+      shell.position.addScaledVector(vel, dt);
+      shell.rotateX(spin.x * dt);
+      shell.rotateY(spin.y * dt);
+      shell.rotateZ(spin.z * dt);
+      if (t > 0.65) shell.material.opacity = 1 - (t - 0.65) / 0.35;
     });
   }
 
@@ -204,7 +284,7 @@ export class EffectsSystem {
       const entry = this.active[i];
       entry.age += dt;
       const t = Math.min(1, entry.age / entry.life);
-      entry.onUpdate?.(t);
+      entry.onUpdate?.(t, dt);
       if (t >= 1) {
         entry.pool.release(entry.obj);
         this.active.splice(i, 1);

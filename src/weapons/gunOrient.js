@@ -80,13 +80,18 @@ export function orientGunByBones(scene, { bodyName = 'Body', muzzleName = 'Attac
     if (perp.lengthSq() > 1e-8) up = perp.normalize();
   }
 
-  // Orthonormal basis: local -Z (controller-forward convention) = fwd,
-  // local +Y = the up reference (or world +Y if no up bone was found).
-  const zAxis = fwd.clone().negate();
-  const xAxis = new THREE.Vector3().crossVectors(up, zAxis).normalize();
-  const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
-  const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
-  scene.quaternion.setFromRotationMatrix(basis);
+  // Matrix4.lookAt(eye, target, up) is the standard, tested way to build
+  // exactly the rotation wanted here: with eye at the origin and target
+  // along `fwd`, its local -Z ends up pointing at `fwd` (the same
+  // "camera looks down -Z" convention used for the controller ray
+  // elsewhere), and `up` resolves the roll. An earlier hand-rolled
+  // version building a basis matrix directly got this backwards (it
+  // aligned the canonical +Z axis with -fwd, which is unrelated to where
+  // `fwd` itself ends up) - confirmed backwards on-device, guns and
+  // enemy weapons alike pointed into the player's hand instead of away
+  // from it.
+  const lookAt = new THREE.Matrix4().lookAt(new THREE.Vector3(0, 0, 0), fwd, up);
+  scene.quaternion.setFromRotationMatrix(lookAt);
   scene.updateMatrixWorld(true);
 
   const newBodyPos = body.getWorldPosition(new THREE.Vector3());
