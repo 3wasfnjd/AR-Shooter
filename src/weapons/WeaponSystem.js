@@ -7,6 +7,8 @@ import { damp, randRange, clamp } from '../utils/math.js';
 
 const _muzzleWorldPos = new THREE.Vector3();
 const _muzzleWorldQuat = new THREE.Quaternion();
+const _ejectWorldPos = new THREE.Vector3();
+const _ejectWorldQuat = new THREE.Quaternion();
 const _fwd = new THREE.Vector3();
 const _tmpQuat = new THREE.Quaternion();
 const _axis = new THREE.Vector3();
@@ -363,6 +365,13 @@ export class WeaponSystem {
     if (Math.random() < def.smoke.chance) {
       this.effects.smokePuff(_muzzleWorldPos, def.smoke);
     }
+    // Ejection port sits near the receiver/grip, not the muzzle tip -
+    // entry.root (parented to the shooting-hand controller grip) is a
+    // close enough stand-in for every weapon without needing a dedicated
+    // per-weapon bone.
+    entry.root.getWorldPosition(_ejectWorldPos);
+    entry.root.getWorldQuaternion(_ejectWorldQuat);
+    this.effects.shellEject(_ejectWorldPos, _ejectWorldQuat);
 
     const grip = this.xrApp.controllers[this.shootingHand]?.grip;
     if (grip) {
