@@ -39,3 +39,68 @@ export function autoOrientGun(scene, forwardBias = 0.02, gripFraction = 0.38) {
   const muzzleY = box3.max.y * 0.35 + box3.min.y * 0.65;
   return new THREE.Vector3(0, muzzleY, muzzleZ);
 }
+
+/**
+ * Exact orientation using two named bones instead of a bounding-box guess:
+ * every weapon in assets/weapons/{west,east} is itself a SkinnedMesh with
+ * a "Body" bone (grip/handle) and, on 4 of 5, an "Attach_Muzzle" bone
+ * (purpose-built by the source kit for exactly this). Box3.setFromObject
+ * doesn't work on a SkinnedMesh at all (see the comment in
+ * src/utils/math.js - same underlying issue that made enemy soldiers
+ * render ~100x too small), so `autoOrientGun`'s bounding-box heuristic was
+ * never going to reliably orient these regardless of tuning. This instead
+ * rotates the scene so Body->Attach_Muzzle points down local -Z, then
+ * recenters Body to the local origin - both bone positions, unaffected by
+ * skinning. Returns the muzzle point in scene-local space, or null if
+ * either bone is missing (the shotgun has no Attach_Muzzle - caller
+ * should fall back to autoOrientGun for it).
+ */
+export function orientGunByBones(scene, { bodyName = 'Body', muzzleName = 'Attach_Muzzle', upRefName = 'Attach_Scope', forwardBias = 0 } = {}) {
+  scene.updateMatrixWorld(true);
+  const body = scene.getObjectByName(bodyName);
+  const muzzleBone = scene.getObjectByName(muzzleName);
+  if (!body || !muzzleBone) return null;
+
+  const bodyPos = body.getWorldPosition(new THREE.Vector3());
+  const muzzlePos = muzzleBone.getWorldPosition(new THREE.Vector3());
+  const fwd = muzzlePos.clone().sub(bodyPos);
+  if (fwd.lengthSq() < 1e-10) return null;
+  fwd.normalize();
+
+  // Forward alone leaves roll undetermined (many rotations point local -Z
+  // along `fwd`); a scope/rail mount sits on TOP of every one of these
+  // weapons in the source rig, so its position relative to Body doubles
+  // as an "up" reference to pin the roll too, instead of the gun ending
+  // up aimed correctly but sideways or upside down.
+  let up = new THREE.Vector3(0, 1, 0);
+  const upRef = upRefName ? scene.getObjectByName(upRefName) : null;
+  if (upRef) {
+    const upPos = upRef.getWorldPosition(new THREE.Vector3()).sub(bodyPos);
+    const perp = upPos.sub(fwd.clone().multiplyScalar(upPos.dot(fwd))); // component of upPos perpendicular to fwd
+    if (perp.lengthSq() > 1e-8) up = perp.normalize();
+  }
+
+  // Orthonormal basis: local -Z (controller-forward convention) = fwd,
+  // local +Y = the up reference (or world +Y if no up bone was found).
+  const zAxis = fwd.clone().negate();
+  const xAxis = new THREE.Vector3().crossVectors(up, zAxis).normalize();
+  const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
+  const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+  scene.quaternion.setFromRotationMatrix(basis);
+  scene.updateMatrixWorld(true);
+
+  const newBodyPos = body.getWorldPosition(new THREE.Vector3());
+  scene.position.sub(newBodyPos);
+  scene.updateMatrixWorld(true);
+
+  const muzzleLocal = muzzleBone.getWorldPosition(new THREE.Vector3());
+  muzzleLocal.z -= forwardBias;
+  return muzzleLocal;
+}
+
+/** Tries the exact bone-based orientation first, falling back to the bounding-box heuristic (e.g. for the shotgun, which has no Attach_Muzzle bone). */
+export function orientGun(scene, forwardBias = 0.02) {
+  const bonePivot = orientGunByBones(scene, { forwardBias: 0 });
+  if (bonePivot) return bonePivot;
+  return autoOrientGun(scene, forwardBias);
+}
