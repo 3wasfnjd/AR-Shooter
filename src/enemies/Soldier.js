@@ -87,6 +87,7 @@ export class Soldier {
     scaleRigToHeight(model, this.height, this.type.heightBones.top, this.type.heightBones.bottom);
     model.position.y -= lowestWorldY(model, this.type.heightBones.bottom); // feet at local origin
     model.updateMatrixWorld(true);
+    this._modelBaseY = model.position.y;
 
     this.facingPivot.add(model);
     this.model = model;
@@ -398,7 +399,39 @@ export class Soldier {
         this.state = 'alert';
     }
 
+    this._updateProceduralMotion(dt);
     this._trackFootsteps(dt);
+  }
+
+  /**
+   * `swat_elite_quest.glb` ships with zero animation clips (see ANIM's
+   * comment in SoldierTypes.js), so without this it's a perfectly rigid
+   * mesh translating through space - reported on-device as "not moving at
+   * all" since a static silhouette sliding a few cm/frame with no limb
+   * motion is very easy to miss entirely. Applies a small procedural
+   * bob/lean while advancing (and a subtler idle sway otherwise) directly
+   * to `model`'s local transform, on top of whatever `facingPivot`/`group`
+   * are doing - cheap enough to run per-frame with no mixer/clips
+   * involved. Animated types (regular soldiers) already get real motion
+   * from their clips, so this is skipped whenever a mixer exists.
+   */
+  _updateProceduralMotion(dt) {
+    if (this.mixer || !this.model) return;
+    this._proceduralT = (this._proceduralT || 0) + dt;
+    const heightScale = this.height / 0.575; // normalize against the Elite's own mid-range height
+    if (this.state === 'reposition') {
+      const stride = this.sprint ? 9 : 6;
+      const phase = this._proceduralT * stride;
+      this.model.position.y = this._modelBaseY + Math.abs(Math.sin(phase)) * 0.012 * heightScale;
+      this.model.rotation.x = THREE.MathUtils.degToRad(this.sprint ? 6 : 3);
+      this.model.rotation.z = Math.sin(phase) * THREE.MathUtils.degToRad(2.5);
+    } else {
+      // Idle breathing sway, subtle enough to read as "standing ready" (or
+      // "at attention" during the formation lineup) rather than a glitch.
+      this.model.position.y = this._modelBaseY + Math.sin(this._proceduralT * 1.4) * 0.004 * heightScale;
+      this.model.rotation.x = damp(this.model.rotation.x, 0, 6, dt);
+      this.model.rotation.z = damp(this.model.rotation.z, 0, 6, dt);
+    }
   }
 
   _faceTarget(playerPos, dt, state) {
