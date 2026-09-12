@@ -190,17 +190,36 @@ building this without a live on-device preview or Quest Scene API access:
   wave (`EnemyManager._makeCoverPoints` / `recenter`), which soldiers path
   to and peek from. Swapping in real anchors later is a matter of feeding
   `EnemyManager.coverPoints` from the Scene API instead.
-- **Weapon/mesh forward-axis orientation is heuristic, not hand-verified.**
-  Every glb's "barrel forward" is inferred from its bounding box (longest
-  horizontal axis = barrel, grip pivot ~38% back from the muzzle end), and
-  character "front" is assumed from a configurable `facingOffsetDeg`. This
-  guess was confirmed wrong on the first on-device test, so rather than
-  keep guessing blind, there's now an in-headset **calibration mode** (hold
-  both triggers ~0.6s — see the README section above) to nudge the grip
-  into place live and read back exact numbers for `WeaponDefs.js`. If
-  soldiers appear to walk backwards toward the player, `facingOffsetDeg` in
-  `src/enemies/SoldierTypes.js` is the equivalent knob for that (no
-  in-headset tool for it yet).
+- **Every weapon glb is itself a `SkinnedMesh`, with a real skeleton** —
+  discovered the same way as the soldier scale bug (desktop preview + a
+  scene-graph dump), and initially missed because a gun doesn't look like
+  it should need bones. Two consequences, both now fixed:
+  - The old bounding-box heuristic for orienting weapons was never going
+    to work reliably (same `Box3.setFromObject` problem as soldiers).
+    `gunOrient.js`'s `orientGunByBones` uses the kit's own `Body` (grip),
+    `Attach_Muzzle`, and `Attach_Scope` (as an "up" reference, to pin
+    roll - forward alone leaves the gun free to spin around its own
+    barrel axis) bones instead, which are exact regardless of skinning.
+    Only the shotgun lacks `Attach_Muzzle` and still falls back to the
+    old heuristic (`autoOrientGun`) for orientation. `WeaponDefs.js`'s
+    `grip` offsets were reset to `[0,0,0]` accordingly - two earlier
+    rounds of manual nudging were tuned against the wrong pivot and are
+    no longer meaningful. There's still an in-headset **calibration
+    mode** (hold both triggers ~0.6s) for whatever small correction is
+    left; see the README section above.
+  - The enemy rifle attaches to a bone (`WristR`) deep in the soldier's
+    own skeleton, which turned out to carry its own baked ~100x scale
+    left over from the source rig's FBX/Blender export pipeline -
+    unrelated to and stacking with our own body-scale correction. This
+    made the attached weapon render ~100x too large. `Soldier._attachWeapon`
+    now measures the wrist's actual accumulated world scale
+    (`getWorldScale`) and inserts a compensating node so the weapon ends
+    up at the same scale factor as the body, whatever the rig's own
+    quirks turn out to be, rather than a hardcoded correction.
+  - Character "front" is separately assumed from a configurable
+    `facingOffsetDeg` in `src/enemies/SoldierTypes.js`; if soldiers ever
+    appear to walk backwards toward the player, that's the knob (no
+    in-headset tool for it yet).
 - **`Box3.setFromObject()` silently lies about a `SkinnedMesh`'s size** —
   this was a real, now-fixed bug, not a caveat: it measures the raw
   geometry vertex buffer, which for a skinned character lives in an

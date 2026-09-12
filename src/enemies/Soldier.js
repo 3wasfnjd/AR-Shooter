@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { instantiateGLTF } from '../assets/AssetLoader.js';
-import { autoOrientGun } from '../weapons/gunOrient.js';
+import { orientGun } from '../weapons/gunOrient.js';
 import { ANIM, HITZONE_MULTIPLIER } from './SoldierTypes.js';
 import { damp, dampAngle, clamp, randRange, scaleRigToHeight, lowestWorldY } from '../utils/math.js';
 import { AUDIO } from '../assets/paths.js';
@@ -120,7 +120,7 @@ export class Soldier {
     if (!wrist) return;
     try {
       const { scene: gun } = await instantiateGLTF(this.type.weaponModel);
-      const muzzleLocal = autoOrientGun(gun, 0.015);
+      const muzzleLocal = orientGun(gun, 0.015);
       const root = new THREE.Group();
       root.add(gun);
       const g = this.type.weaponGrip;
@@ -130,10 +130,30 @@ export class Soldier {
         THREE.MathUtils.degToRad(g.rotDeg[1]),
         THREE.MathUtils.degToRad(g.rotDeg[2])
       );
+
+      // A bone deep in an imported rig can carry its own baked scale left
+      // over from the source FBX/Blender pipeline (confirmed on swat.glb:
+      // WristR's accumulated world scale was 100x the body's own scale
+      // factor - an armature-level artifact unrelated to our own
+      // scaleRigToHeight correction). Parenting at identity scale would
+      // silently inherit that and render the weapon absurdly oversized
+      // *and* blow up the small grip position offset by the same factor,
+      // so cancel it via an intermediate node scaled to undo it and
+      // reapply just the body's own correction factor - self-correcting
+      // for whatever the rig's own quirks turn out to be, rather than a
+      // hardcoded "divide by 100".
+      const wristWorldScale = wrist.getWorldScale(new THREE.Vector3());
+      const targetScale = this.model.scale.x;
+      const comp = new THREE.Object3D();
+      if (wristWorldScale.x > 1e-6) {
+        comp.scale.setScalar(targetScale / wristWorldScale.x);
+      }
+      comp.add(root);
+
       const muzzle = new THREE.Object3D();
       muzzle.position.copy(muzzleLocal);
       gun.add(muzzle);
-      wrist.add(root);
+      wrist.add(comp);
       this.weaponMuzzle = muzzle;
     } catch (err) {
       console.warn('[Soldier] failed to attach enemy weapon', err);

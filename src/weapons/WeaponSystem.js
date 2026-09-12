@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { instantiateGLTF } from '../assets/AssetLoader.js';
 import { WEAPON_DEFS, WEAPON_ORDER, weaponDef } from './WeaponDefs.js';
 import { AUDIO } from '../assets/paths.js';
-import { autoOrientGun } from './gunOrient.js';
+import { orientGun } from './gunOrient.js';
 import { damp, randRange, clamp } from '../utils/math.js';
 
 const _muzzleWorldPos = new THREE.Vector3();
@@ -82,7 +82,7 @@ export class WeaponSystem {
 
   async _loadWeapon(def) {
     const { scene } = await instantiateGLTF(def.model);
-    scene.userData.muzzleLocal = autoOrientGun(scene, def.muzzleForwardBias);
+    scene.userData.muzzleLocal = orientGun(scene, def.muzzleForwardBias);
 
     const grip = this._gripFor(def.id);
     const root = new THREE.Group();

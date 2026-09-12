@@ -66,7 +66,11 @@ export const SOLDIER_TYPES = {
       weaponHand: 'WristR'
     },
     weaponModel: WEAPON_MODELS.enemyRifle,
-    weaponGrip: { pos: [0, 0.01, 0.02], rotDeg: [0, 90, 90] },
+    // Reset to identity now that gunOrient.js's bone-based orientation
+    // (Body bone = pivot, Body->Attach_Muzzle = forward, Attach_Scope =
+    // up) replaces the old bounding-box guess this rotation used to
+    // compensate for.
+    weaponGrip: { pos: [0, 0, 0], rotDeg: [0, 0, 0] },
     stats: {
       health: 65,
       damage: 5,
