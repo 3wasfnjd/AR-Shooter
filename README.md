@@ -202,6 +202,13 @@ do all five in one session). Hold both triggers again to exit.
   sphere-vs-ray against a handful of per-soldier hurtboxes (no per-triangle
   mesh raycasting), and concurrent alive enemies are capped.
 
+> **Temporary: `Game.invincible` is `true`.** Requested so enemy fire
+> doesn't cost health/cause game-over while other adjustments are still
+> being tested. Enemies still fire, still take damage, AI is otherwise
+> unaffected - only the player-damage consequence is skipped. Flip
+> `this.invincible` back to `false` in `Game.js`'s constructor once
+> testing is done.
+
 ## Known simplifications (and why)
 
 These are deliberate, documented trade-offs given the constraints of
@@ -257,6 +264,19 @@ building this without a live on-device preview or Quest Scene API access:
       rotation with `THREE.Matrix4.lookAt(origin, fwd, up)` instead - the
       same "camera looks down -Z" primitive Three.js already ships,
       applied to an arbitrary forward vector rather than a camera.
+    - Recentering on `Body` (as the version above did) put the rendered
+      gun visibly offset from the actual controller/hand position -
+      reported on-device as the weapon "not aligned with the hand", for
+      the player's own weapon and every enemy's. Measured why via the
+      desktop preview (dumping every named bone's world position against
+      the rig's own bounding box): `Body` isn't where a hand holds these
+      rigs at all - on the rifle it sits ~4.5cm above the bore-to-grip
+      line; on the pistol, ~3.7cm further toward the muzzle than the
+      actual grip. None of these rigs have a dedicated grip/handle bone,
+      but `Trigger` sits right where a hand wraps the grip (a trigger
+      finger is essentially at the palm's height and just in front of
+      it) and exists on every weapon that also has `Attach_Muzzle`, so
+      `orientGunByBones` now recenters on `Trigger` instead.
   - The enemy rifle attaches to a bone (`WristR`) deep in the soldier's
     own skeleton, which turned out to carry its own baked ~100x scale
     left over from the source rig's FBX/Blender export pipeline -

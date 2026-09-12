@@ -41,25 +41,39 @@ export function autoOrientGun(scene, forwardBias = 0.02, gripFraction = 0.38) {
 }
 
 /**
- * Exact orientation using two named bones instead of a bounding-box guess:
+ * Exact orientation using named bones instead of a bounding-box guess:
  * every weapon in assets/weapons/{west,east} is itself a SkinnedMesh with
- * a "Body" bone (grip/handle) and, on 4 of 5, an "Attach_Muzzle" bone
- * (purpose-built by the source kit for exactly this). Box3.setFromObject
- * doesn't work on a SkinnedMesh at all (see the comment in
- * src/utils/math.js - same underlying issue that made enemy soldiers
- * render ~100x too small), so `autoOrientGun`'s bounding-box heuristic was
- * never going to reliably orient these regardless of tuning. This instead
- * rotates the scene so Body->Attach_Muzzle points down local -Z, then
- * recenters Body to the local origin - both bone positions, unaffected by
- * skinning. Returns the muzzle point in scene-local space, or null if
- * either bone is missing (the shotgun has no Attach_Muzzle - caller
- * should fall back to autoOrientGun for it).
+ * a "Body" bone and, on 4 of 5, an "Attach_Muzzle" bone (purpose-built by
+ * the source kit for exactly this). Box3.setFromObject doesn't work on a
+ * SkinnedMesh at all (see the comment in src/utils/math.js - same
+ * underlying issue that made enemy soldiers render ~100x too small), so
+ * `autoOrientGun`'s bounding-box heuristic was never going to reliably
+ * orient these regardless of tuning. This instead rotates the scene so
+ * Body->Attach_Muzzle points down local -Z, then recenters on `gripName`
+ * (default "Trigger") - both bone positions, unaffected by skinning.
+ * Returns the muzzle point in scene-local space, or null if body/muzzle is
+ * missing (the shotgun has no Attach_Muzzle - caller should fall back to
+ * autoOrientGun for it).
+ *
+ * "Body" is NOT where a hand actually holds these rigs - measured via the
+ * desktop preview (dumping every named bone's world position against the
+ * geometry's own bounding box): on the rifle, Body sits ~4.5cm above the
+ * bore-to-grip line where Trigger sits; on the pistol, Body sits ~3.7cm
+ * further toward the muzzle than Trigger. Recentering on Body (as an
+ * earlier version did) reliably put the rendered gun offset from the
+ * actual controller position - reported on-device as the weapon "not
+ * aligned with the hand", for both the player's own weapon and every
+ * enemy's. None of these rigs have a dedicated grip/handle bone, but
+ * Trigger sits right where a hand wraps the grip (a real trigger finger
+ * is essentially at the palm's height and just in front of it), making it
+ * a much closer stand-in than Body ever was.
  */
-export function orientGunByBones(scene, { bodyName = 'Body', muzzleName = 'Attach_Muzzle', upRefName = 'Attach_Scope', forwardBias = 0 } = {}) {
+export function orientGunByBones(scene, { bodyName = 'Body', muzzleName = 'Attach_Muzzle', upRefName = 'Attach_Scope', gripName = 'Trigger', forwardBias = 0 } = {}) {
   scene.updateMatrixWorld(true);
   const body = scene.getObjectByName(bodyName);
   const muzzleBone = scene.getObjectByName(muzzleName);
   if (!body || !muzzleBone) return null;
+  const gripBone = (gripName && scene.getObjectByName(gripName)) || body;
 
   const bodyPos = body.getWorldPosition(new THREE.Vector3());
   const muzzlePos = muzzleBone.getWorldPosition(new THREE.Vector3());
@@ -94,8 +108,8 @@ export function orientGunByBones(scene, { bodyName = 'Body', muzzleName = 'Attac
   scene.quaternion.setFromRotationMatrix(lookAt);
   scene.updateMatrixWorld(true);
 
-  const newBodyPos = body.getWorldPosition(new THREE.Vector3());
-  scene.position.sub(newBodyPos);
+  const newGripPos = gripBone.getWorldPosition(new THREE.Vector3());
+  scene.position.sub(newGripPos);
   scene.updateMatrixWorld(true);
 
   const muzzleLocal = muzzleBone.getWorldPosition(new THREE.Vector3());

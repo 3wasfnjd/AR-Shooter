@@ -34,6 +34,12 @@ export class Game {
     this.score = 0;
     this.health = 100;
     this.maxHealth = 100;
+    // Requested testing convenience: player takes no damage (no health
+    // loss, no death/game-over, no hit-flash/vignette) while other
+    // gameplay adjustments are still being iterated on. Flip back to
+    // `false` once that's done - everything else (enemies still fire,
+    // still take damage, AI unaffected) stays normal either way.
+    this.invincible = true;
 
     this._spawnQueue = [];
     this._spawnTimer = 0;
@@ -280,6 +286,7 @@ export class Game {
   // ---- combat callbacks ----------------------------------------------
 
   _onPlayerDamaged(amount) {
+    if (this.invincible) return;
     this.health = clamp(this.health - amount, 0, this.maxHealth);
     this.hud.flashDirectionalHit();
     this.xrApp.pulse('left', 0.4, 60);
