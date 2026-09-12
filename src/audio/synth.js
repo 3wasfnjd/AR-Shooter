@@ -59,6 +59,58 @@ export async function synthPortalOpen(sampleRate) {
   return ctx.startRendering();
 }
 
+/** Sharp referee/military-style whistle: signals "go" at the start of an assault. */
+export async function synthWhistle(sampleRate) {
+  const duration = 1.0;
+  const ctx = offlineCtx(duration, sampleRate);
+
+  const tone = ctx.createOscillator();
+  tone.type = 'square';
+  tone.frequency.setValueAtTime(3100, 0);
+  tone.frequency.linearRampToValueAtTime(3450, duration * 0.5);
+  tone.frequency.linearRampToValueAtTime(3200, duration);
+
+  const bandpass = ctx.createBiquadFilter();
+  bandpass.type = 'bandpass';
+  bandpass.frequency.value = 3200;
+  bandpass.Q.value = 5;
+
+  // Amplitude trill: the pea inside a real whistle rattles the airstream at
+  // roughly this rate, reading as a fluttering tremolo rather than a flat
+  // tone. Modulates a gain stage ahead of the overall envelope (rather than
+  // the envelope's own gain param directly) so the two don't sum into
+  // clipping - tremolo output stays in [0.3, 1.0], envelope peaks at 0.6.
+  const trillLfo = ctx.createOscillator();
+  trillLfo.type = 'sine';
+  trillLfo.frequency.value = 24;
+  const trillDepth = ctx.createGain();
+  trillDepth.gain.value = 0.35;
+  const trillOffset = ctx.createConstantSource();
+  trillOffset.offset.value = 0.65;
+
+  const trillGain = ctx.createGain();
+  trillGain.gain.value = 0;
+  trillLfo.connect(trillDepth).connect(trillGain.gain);
+  trillOffset.connect(trillGain.gain);
+
+  const envelope = ctx.createGain();
+  envelope.gain.setValueAtTime(0.0001, 0);
+  envelope.gain.exponentialRampToValueAtTime(0.6, 0.015);
+  envelope.gain.setValueAtTime(0.6, duration - 0.12);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, duration);
+
+  tone.connect(bandpass).connect(trillGain).connect(envelope).connect(ctx.destination);
+
+  tone.start(0);
+  trillLfo.start(0);
+  trillOffset.start(0);
+  tone.stop(duration);
+  trillLfo.stop(duration);
+  trillOffset.stop(duration);
+
+  return ctx.startRendering();
+}
+
 /** Low sustained combat-ambience drone, seamlessly loopable. */
 export async function synthAmbienceLoop(sampleRate) {
   const duration = 6.0;

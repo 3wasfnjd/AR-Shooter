@@ -137,6 +137,21 @@ do all five in one session). Hold both triggers again to exit.
   cover → hit-react → dodge → death) in `Soldier.js`, orchestrated per-wave
   by `src/game/Game.js`. Soldiers are assigned spread-out approach sectors
   so a squad attacks from multiple directions rather than balling up.
+- **Pre-battle formation** — confirming a weapon doesn't drop straight into
+  combat: `EnemyManager.spawnFormation` lines up all 20 wave-1 soldiers (15
+  regular + a full back row of 5 Elites, so the Elite model is unmissable)
+  standing at attention in front of wherever the player was looking,
+  holding an `formation` FSM state that does nothing until released. A
+  right-trigger press plays a synthesized whistle (`synth.js`'s
+  `synthWhistle` — no whistle recording exists in `assets/audio`, same
+  "synthesize rather than fake an asset file" call as the portal/ambience
+  sounds) and calls `EnemyManager.beginAssault()`, which releases each
+  soldier into its normal alert→reposition combat FSM after its own random
+  0-1.6s delay and a randomized initial sprint-or-advance choice - so the
+  line breaks apart organically instead of the whole formation stepping
+  off in lockstep. A per-soldier `speedMult` (±15%) picked at spawn keeps
+  soldiers reading as individuals for the rest of the match, not just
+  during this initial break.
 - **Room integration** — soldiers spawn/stand exactly at floor height
   (WebXR `local-floor` reference space) and never float or appear at eye
   level. See **Known simplifications** for what this does *not* do (real

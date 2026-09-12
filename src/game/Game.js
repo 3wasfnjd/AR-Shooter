@@ -29,7 +29,7 @@ export class Game {
     this.hud = new HUD({ xrApp: this.xrApp, weaponSystem: this.weapons });
     this.enemies.hud = this.hud;
 
-    this.mode = 'intro'; // intro | weaponSelect | playing | gameOver
+    this.mode = 'intro'; // intro | weaponSelect | formation | playing | gameOver
     this.wave = 1;
     this.score = 0;
     this.health = 100;
@@ -108,6 +108,9 @@ export class Game {
 
     if (this.mode === 'weaponSelect') {
       this._updateWeaponSelect();
+    } else if (this.mode === 'formation') {
+      this.enemies.update(dt, playerPos);
+      this._updateFormationInput();
     } else if (this.mode === 'playing') {
       this.enemies.update(dt, playerPos);
       this._updateSpawning(dt, playerPos);
@@ -121,18 +124,65 @@ export class Game {
   _updateWeaponSelect() {
     const s = this.input.state.right;
     if (s.triggerPressed) {
-      this.weapons.unlock();
-      this.mode = 'playing';
-      this.hud.showHUD();
-      this.audio.startAmbience(0.3);
+      // Weapon stays locked through the formation review - firing is
+      // reserved for once the assault is actually ordered, both to avoid
+      // the same trigger press double-firing on entry and so nobody can
+      // gun down the lineup before the whistle.
+      this.mode = 'formation';
+      this.hud.showFormation();
       const playerPos = new THREE.Vector3();
       this.xrApp.camera.getWorldPosition(playerPos);
       if (!this._recentered) {
         this.enemies.recenter(playerPos);
         this._recentered = true;
       }
-      this._startWave(playerPos);
+      this._spawnFormation(playerPos);
     }
+  }
+
+  /**
+   * The 20-soldier pre-battle lineup, requested so the very first thing the
+   * player sees is a full line-up standing at attention (with the Elite
+   * model visibly present) rather than the usual trickle of portal-spawned
+   * soldiers - combat only starts once the player confirms with a trigger
+   * press, at which point a whistle plays and the line breaks apart.
+   */
+  async _spawnFormation(playerPos) {
+    this._formationReady = false;
+    const dir = new THREE.Vector3();
+    this.xrApp.camera.getWorldDirection(dir);
+    const facingYaw = Math.atan2(dir.x, dir.z);
+    await this.enemies.spawnFormation(playerPos, facingYaw, this._formationComposition());
+    this._formationReady = true;
+    this.hud.showFormationReady();
+  }
+
+  /** 20 total: 15 regular in the front three rows, a full back row of 5 Elites (mixamorig-rigged `swat_elite_quest.glb`) so the different model is unambiguously visible standing in formation. */
+  _formationComposition() {
+    const list = [];
+    for (let i = 0; i < 15; i++) list.push('regular');
+    for (let i = 0; i < 5; i++) list.push('elite');
+    return list;
+  }
+
+  _updateFormationInput() {
+    if (!this._formationReady) return;
+    const s = this.input.state.right;
+    if (s.triggerPressed) {
+      this._beginAssault();
+    }
+  }
+
+  _beginAssault() {
+    this.weapons.unlock();
+    this.mode = 'playing';
+    this.hud.showHUD();
+    this.audio.playWhistle();
+    this.audio.startAmbience(0.3);
+    this.enemies.beginAssault();
+    this.wave = 1;
+    this._spawnQueue = [];
+    this._waveActive = true;
   }
 
   _updateGameOverInput() {
