@@ -13,15 +13,20 @@ export const CHARACTERS = {
   elite: p('characters/humans/swat_elite_quest.glb')
 };
 
+// Stylized "Fortnite-closer" weapon pass: Kenney's Blaster Kit 2.1 (CC0,
+// www.kenney.nl) replacing the earlier realistic SkinnedMesh weapon pack.
+// Every model here is a plain static Mesh (no skeleton/bones at all,
+// unlike the old pack) and the whole kit is consistently authored with its
+// barrel along local -Z and no baked rotation needed - see gunOrient.js's
+// orientKenneyBlaster for how these are positioned/oriented at runtime.
 export const WEAPON_MODELS = {
-  pistol: p('weapons/west/Pistol_Full_West.glb'),
-  smg: p('weapons/west/SMG_Full_West.glb'),
-  rifle: p('weapons/west/Rifle_Assault_West.glb'),
-  shotgun: p('weapons/west/Shotgun_Pump_West.glb'),
-  sniper: p('weapons/west/Sniper_Rifle_West.glb'),
+  pistol: p('weapons/kenney/Blaster_Pistol.glb'),
+  smg: p('weapons/kenney/Blaster_SMG.glb'),
+  rifle: p('weapons/kenney/Blaster_Rifle.glb'),
+  shotgun: p('weapons/kenney/Blaster_Shotgun.glb'),
+  sniper: p('weapons/kenney/Blaster_Sniper.glb'),
   // used as the enemy's carried weapon (scaled down with the enemy)
-  enemyRifle: p('weapons/east/Rifle_Assault_East.glb'),
-  enemyEliteRifle: p('weapons/east/Rifle_Battle_East.glb')
+  enemyRifle: p('weapons/kenney/Blaster_Enemy.glb')
 };
 
 export const AUDIO = {

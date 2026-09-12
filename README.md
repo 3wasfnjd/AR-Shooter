@@ -127,7 +127,9 @@ do all five in one session). Hold both triggers again to exit.
 - **Five weapons, each with a distinct feel** — Pistol, SMG, Assault Rifle,
   Shotgun (pellet spread + pump lockout), Sniper (bolt-action lockout, huge
   damage, tight spread) — `src/weapons/WeaponDefs.js` tunes fire rate,
-  recoil curve, spread, haptics, and VFX per weapon independently.
+  recoil curve, spread, haptics, and VFX per weapon independently. Models
+  are Kenney's Blaster Kit 2.1 (see **Known simplifications** for the style
+  switch and how these are oriented without any bones to reference).
 - **Enemies visibly carry correctly-proportioned weapons** — the enemy
   rifle glb is parented directly onto the soldier's `WristR` bone at
   identity scale, so it inherits the same uniform scale-down factor as the
@@ -234,49 +236,29 @@ building this without a live on-device preview or Quest Scene API access:
   opposite side (approximating the bounce light a real room provides,
   which one directional light can't) so the unlit side of a character
   doesn't go fully black.
-- **Every weapon glb is itself a `SkinnedMesh`, with a real skeleton** —
-  discovered the same way as the soldier scale bug (desktop preview + a
-  scene-graph dump), and initially missed because a gun doesn't look like
-  it should need bones. Two consequences, both now fixed:
-  - The old bounding-box heuristic for orienting weapons was never going
-    to work reliably (same `Box3.setFromObject` problem as soldiers).
-    `gunOrient.js`'s `orientGunByBones` uses the kit's own `Body` (grip),
-    `Attach_Muzzle`, and `Attach_Scope` (as an "up" reference, to pin
-    roll - forward alone leaves the gun free to spin around its own
-    barrel axis) bones instead, which are exact regardless of skinning.
-    Only the shotgun lacks `Attach_Muzzle` and still falls back to the
-    old heuristic (`autoOrientGun`) for orientation. `WeaponDefs.js`'s
-    `grip` offsets were reset to `[0,0,0]` accordingly - two earlier
-    rounds of manual nudging were tuned against the wrong pivot and are
-    no longer meaningful. There's still an in-headset **calibration
-    mode** (hold both triggers ~0.6s) for whatever small correction is
-    left; see the README section above.
-    - A first version of `orientGunByBones`'s roll correction built a
-      basis matrix directly from the forward/up vectors and called
-      `setFromRotationMatrix` on it - reported on-device as every weapon
-      (player and enemy) pointing backward. That basis mapped the
-      *canonical* axes onto (forward, up, right), which isn't the same
-      problem as "rotate this specific forward vector onto local -Z";
-      confirmed by an earlier debug capture that had the muzzle bone
-      landing at *positive* local Z instead of the negative Z the rest of
-      the codebase treats as "forward" (`WeaponSystem._fire`'s
-      `_fwd.set(0,0,-1).applyQuaternion(...)`). Fixed by building the
-      rotation with `THREE.Matrix4.lookAt(origin, fwd, up)` instead - the
-      same "camera looks down -Z" primitive Three.js already ships,
-      applied to an arbitrary forward vector rather than a camera.
-    - Recentering on `Body` (as the version above did) put the rendered
-      gun visibly offset from the actual controller/hand position -
-      reported on-device as the weapon "not aligned with the hand", for
-      the player's own weapon and every enemy's. Measured why via the
-      desktop preview (dumping every named bone's world position against
-      the rig's own bounding box): `Body` isn't where a hand holds these
-      rigs at all - on the rifle it sits ~4.5cm above the bore-to-grip
-      line; on the pistol, ~3.7cm further toward the muzzle than the
-      actual grip. None of these rigs have a dedicated grip/handle bone,
-      but `Trigger` sits right where a hand wraps the grip (a trigger
-      finger is essentially at the palm's height and just in front of
-      it) and exists on every weapon that also has `Attach_Muzzle`, so
-      `orientGunByBones` now recenters on `Trigger` instead.
+- **Weapon models switched to Kenney's Blaster Kit 2.1 (CC0)** — a
+  deliberate style change (requested after seeing the realistic kit
+  in-headset) moving the look closer to a colorful, chunky, Fortnite-like
+  aesthetic instead of gritty realism; see `assets/weapons/kenney/`.
+  Earlier weapon-orientation history (`orientGunByBones`, `Body`/
+  `Attach_Muzzle`/`Attach_Scope` bones, the `Trigger`-recenter fix, the
+  `Matrix4.lookAt` roll-correction fix) applied to the realistic pack's
+  SkinnedMesh weapons, which this change removed entirely - kept here only
+  as design history in case a future pack reintroduces skinned weapons.
+  The Kenney kit is much simpler to work with: every model is a plain
+  static Mesh with no skeleton at all, so `Box3.setFromObject` (which
+  actively lied about the old pack's SkinnedMesh weapons, see below) is
+  fully reliable, and the whole kit turned out to be consistently
+  authored with its barrel along local -Z with no rotation needed -
+  confirmed by rendering a side-profile with markers at both Z extremes.
+  `gunOrient.js`'s `orientKenneyBlaster` only needs to recenter the model
+  (there's no dedicated grip/handle marker in this kit either, so that
+  point is estimated from the bounding box, the same way `autoOrientGun`
+  used to for the old pack, and is likewise a starting point for the
+  in-headset **calibration mode** - hold both triggers ~0.6s - to refine).
+  The Elite soldier's rifle is fused into its own body mesh and isn't
+  swappable this way; only the player's five weapons and the regular
+  soldier's carried rifle changed style.
   - The enemy rifle attaches to a bone (`WristR`) deep in the soldier's
     own skeleton, which turned out to carry its own baked ~100x scale
     left over from the source rig's FBX/Blender export pipeline -
