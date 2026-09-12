@@ -66,10 +66,9 @@ export const SOLDIER_TYPES = {
       weaponHand: 'WristR'
     },
     weaponModel: WEAPON_MODELS.enemyRifle,
-    // Reset to identity now that gunOrient.js's bone-based orientation
-    // (Body bone = pivot, Body->Attach_Muzzle = forward, Attach_Scope =
-    // up) replaces the old bounding-box guess this rotation used to
-    // compensate for.
+    // Left at identity: gunOrient.js's orientKenneyBlaster already
+    // recenters/positions the Kenney blaster model from its own bounding
+    // box, same as the player's weapons.
     weaponGrip: { pos: [0, 0, 0], rotDeg: [0, 0, 0] },
     stats: {
       health: 65,

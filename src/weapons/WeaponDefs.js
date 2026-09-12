@@ -1,22 +1,21 @@
 import { WEAPON_MODELS, AUDIO } from '../assets/paths.js';
 
-// Per-weapon tuning. `grip.pos`/`grip.rotDeg` position/orient the glb
-// relative to the controller grip space (WebXR grip space: -Z is roughly
-// "into the palm", +Y up), ON TOP OF the pivot gunOrient.js already
-// establishes at each weapon's own "Body" bone (the grip/handle - every
-// weapon here is a SkinnedMesh with a real skeleton, not a static mesh;
-// see the comment on orientGunByBones in gunOrient.js). Reset to [0,0,0]
-// after that bone-based fix replaced two earlier rounds of blind
-// bounding-box-based guessing (including a Y-offset nudged from an
-// on-device screenshot) - those were compensating for the wrong pivot
-// entirely and are no longer meaningful. If a weapon still doesn't sit
-// right in-hand, use the in-game calibration mode (hold both triggers
-// ~0.6s - see WeaponSystem.js and README.md) to nudge it and replace
-// these numbers with what it reports; that should now be a small, real
-// correction instead of guessing an entire grip transform from scratch.
+// Per-weapon tuning. Models are Kenney's Blaster Kit 2.1 (CC0) - a
+// stylized, chunky, colorful pack chosen to move the game's look closer to
+// a Fortnite-like aesthetic, replacing the earlier realistic SkinnedMesh
+// pack entirely. `grip.pos`/`grip.rotDeg` position/orient the glb relative
+// to the controller grip space (WebXR grip space: -Z is roughly "into the
+// palm", +Y up), ON TOP OF the pivot gunOrient.js's `orientKenneyBlaster`
+// already establishes from each model's own bounding box (these are plain
+// static meshes with no bones at all, unlike the old pack - see that
+// file's comment for how the grip point is estimated without one). Left
+// at [0,0,0] as a clean baseline; if a weapon doesn't sit right in-hand,
+// use the in-game calibration mode (hold both triggers ~0.6s - see
+// WeaponSystem.js and README.md) to nudge it and bake in what it reports.
 // `muzzleForwardBias` nudges the muzzle tip forward/back and is 0 for
-// every weapon except the shotgun, which has no "Attach_Muzzle" bone and
-// falls back to the old bounding-box heuristic.
+// every weapon - the old shotgun special-case (falling back to a cruder
+// heuristic for a bone this kit doesn't have anyway) no longer applies,
+// since every weapon here goes through the same bounding-box-based path.
 export const WEAPON_DEFS = [
   {
     id: 'pistol',
@@ -97,7 +96,7 @@ export const WEAPON_DEFS = [
     spreadDeg: 9,
     scale: 1,
     grip: { pos: [0, 0, 0], rotDeg: [0, 0, 0] },
-    muzzleForwardBias: 0.03,
+    muzzleForwardBias: 0,
     recoil: { kickBack: 0.05, riseDeg: 10, recoverySpeed: 8 },
     flash: { size: 0.14, life: 0.14, color: 0xffd68a },
     smoke: { chance: 1, size: 0.09, life: 1.3, density: 0.6 },
