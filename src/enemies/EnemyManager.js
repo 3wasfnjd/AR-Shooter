@@ -65,6 +65,61 @@ export class EnemyManager {
     return this.soldiers.filter((s) => s.alive).length;
   }
 
+  /**
+   * Pre-battle lineup: materializes `composition.length` soldiers standing
+   * in neat rows in front of wherever the player is currently facing
+   * (`facingYaw`), all facing back toward the player, holding an idle pose
+   * until beginAssault() releases them. No portal breach per-soldier (20 of
+   * those flashing at once would be visual noise) - they just fade/scale in
+   * together the same way a single breach-spawned soldier does.
+   */
+  async spawnFormation(playerPos, facingYaw, composition) {
+    const cols = 5;
+    const colSpacing = 0.34;
+    const rowSpacing = 0.36;
+    const frontDistance = 1.7;
+    const startX = -((Math.min(cols, composition.length) - 1) * colSpacing) / 2;
+
+    const loads = composition.map((typeId, i) => {
+      const type = SOLDIER_TYPES[typeId];
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const localX = startX + col * colSpacing;
+      const localZ = frontDistance + row * rowSpacing;
+
+      // Rotate the local (right, forward) grid offset by facingYaw so the
+      // block forms in front of wherever the player happened to be looking
+      // when they confirmed their weapon, not always along world +Z.
+      const worldX = playerPos.x + Math.sin(facingYaw) * localZ + Math.cos(facingYaw) * localX;
+      const worldZ = playerPos.z + Math.cos(facingYaw) * localZ - Math.sin(facingYaw) * localX;
+      const spawnPos = new THREE.Vector3(worldX, 0, worldZ);
+
+      // Same (sin, cos) convention as spawnAt's sector, so this soldier's
+      // later engagement approach (_pickApproachTarget) radiates outward
+      // from roughly where it was already standing instead of snapping to
+      // some unrelated angle the moment the assault begins.
+      const sector = Math.atan2(worldX - playerPos.x, worldZ - playerPos.z);
+      const facingTowardPlayer = sector + Math.PI;
+
+      const soldier = new Soldier({ scene: this.scene, effects: this.effects, audio: this.audio, type, sector });
+      soldier.yaw = facingTowardPlayer;
+      soldier.facingPivot.rotation.y = facingTowardPlayer;
+      this.soldiers.push(soldier);
+      return soldier.load(spawnPos, { formation: true });
+    });
+
+    await Promise.all(loads);
+  }
+
+  /** Releases every soldier currently holding formation into combat, each after its own small random delay so the line breaks apart organically instead of every soldier stepping off in lockstep. */
+  beginAssault() {
+    for (const s of this.soldiers) {
+      if (s.state === 'formation') {
+        s.beginAssault(randRange(0, 1.6));
+      }
+    }
+  }
+
   /** Spawns one soldier of `typeId` via a portal breach at the given world-floor `sector` angle around the player. */
   async spawnAt(typeId, playerPos, sector, radiusScale = 1) {
     const type = SOLDIER_TYPES[typeId];

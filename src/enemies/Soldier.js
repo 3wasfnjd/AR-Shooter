@@ -53,6 +53,10 @@ export class Soldier {
     this.moveTarget = new THREE.Vector3();
     this.movingFire = false;
     this.sprint = false;
+    // Per-soldier pace variance so a formation dispersing together doesn't
+    // move as one uniform block - each soldier reads as an individual.
+    this.speedMult = randRange(0.85, 1.15);
+    this.formationHold = false;
     this.shotsThisBurst = 0;
     this.suppressionCount = 0;
     this._fireCooldown = 0;
@@ -72,7 +76,13 @@ export class Soldier {
     this.ready = false;
   }
 
-  async load(spawnPos) {
+  /**
+   * `formation`: true for the pre-battle lineup (see EnemyManager.spawnFormation)
+   * - skips the "alert" reaction-chime/timer and instead holds an idle pose
+   * in the `formation` state until beginAssault() is called externally.
+   */
+  async load(spawnPos, { formation = false } = {}) {
+    this.formationHold = formation;
     const { scene: model, animations } = await instantiateGLTF(this.type.model);
     scaleRigToHeight(model, this.height, this.type.heightBones.top, this.type.heightBones.bottom);
     model.position.y -= lowestWorldY(model, this.type.heightBones.bottom); // feet at local origin
@@ -354,6 +364,12 @@ export class Soldier {
       case 'spawning':
         this._updateSpawning(dt);
         break;
+      case 'formation':
+        this._updateFormation();
+        break;
+      case 'assaultPending':
+        this._updateAssaultPending(dt, ctx);
+        break;
       case 'alert':
         this._updateAlert(dt, ctx);
         break;
@@ -402,6 +418,11 @@ export class Soldier {
     if (this._fullScale - next < this._fullScale * 0.02) {
       this.model.scale.setScalar(this._fullScale);
       this._buildHurtboxes();
+      if (this.formationHold) {
+        this.state = 'formation';
+        this._playAction('idle', { fadeTime: 0.3 });
+        return;
+      }
       this.state = 'alert';
       this.stateTimer = randRange(0.25, this.type.stats.reactionTime);
       this._playAction('alert', { fadeTime: 0.3 });
@@ -412,6 +433,26 @@ export class Soldier {
       // spotted" sound exists in assets/audio).
       this.audio.playAt(AUDIO.ui.hitConfirm, this.group, { volume: 0.3, refDistance: 0.8 });
     }
+  }
+
+  /** Holds a standing pose in the pre-battle lineup; does nothing until beginAssault() fires. */
+  _updateFormation() {}
+
+  /** Called by EnemyManager once the player signals the assault to start. `delay` staggers this soldier's break from formation so 20 soldiers don't move in lockstep. */
+  beginAssault(delay = 0) {
+    if (this.state !== 'formation') return;
+    this.state = 'assaultPending';
+    this.stateTimer = delay;
+  }
+
+  _updateAssaultPending(dt, ctx) {
+    if (this.stateTimer > 0) return;
+    this._pickApproachTarget(ctx);
+    // Not every soldier charges in at a dead sprint - a mixed pace (plus
+    // the per-soldier speedMult applied in _updateReposition) is what
+    // reads as an organic scatter instead of a uniform wall advancing.
+    this.sprint = Math.random() < 0.6;
+    this.state = 'reposition';
   }
 
   _updateAlert(dt, ctx) {
@@ -435,7 +476,7 @@ export class Soldier {
   }
 
   _updateReposition(dt, ctx) {
-    const speed = this.sprint ? this.type.stats.sprintSpeed : this.type.stats.moveSpeed;
+    const speed = (this.sprint ? this.type.stats.sprintSpeed : this.type.stats.moveSpeed) * this.speedMult;
     const toTarget = _tmp.copy(this.moveTarget).sub(this.group.position);
     toTarget.y = 0;
     const dist = toTarget.length();

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { loadAudioBuffer } from '../assets/AssetLoader.js';
 import { AUDIO } from '../assets/paths.js';
-import { synthPortalOpen, synthAmbienceLoop } from './synth.js';
+import { synthPortalOpen, synthAmbienceLoop, synthWhistle } from './synth.js';
 import { choice } from '../utils/math.js';
 
 const MAX_VOICES = 24;
@@ -38,12 +38,14 @@ export class AudioManager {
   }
 
   async _prepareSynthBuffers() {
-    const [portal, ambience] = await Promise.all([
+    const [portal, ambience, whistle] = await Promise.all([
       synthPortalOpen(this.ctx.sampleRate),
-      synthAmbienceLoop(this.ctx.sampleRate)
+      synthAmbienceLoop(this.ctx.sampleRate),
+      synthWhistle(this.ctx.sampleRate)
     ]);
     this.synth.portalOpen = portal;
     this.synth.ambience = ambience;
+    this.synth.whistle = whistle;
   }
 
   async startAmbience(volume = 0.35) {
@@ -96,6 +98,16 @@ export class AudioManager {
     object3d.add(voice);
     voice.position.set(0, 0, 0);
     voice.play();
+  }
+
+  /** The "begin assault" signal - non-positional so it reads clearly over combat ambience regardless of where the player is looking. */
+  async playWhistle(volume = 0.9) {
+    await this._synthReady;
+    if (!this.synth.whistle) return;
+    const audio = new THREE.Audio(this.listener);
+    audio.setBuffer(this.synth.whistle);
+    audio.setVolume(volume);
+    audio.play();
   }
 
   /** Non-positional UI sound (HUD feedback, player got hit, etc). */

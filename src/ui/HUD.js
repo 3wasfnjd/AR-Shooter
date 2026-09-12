@@ -29,7 +29,8 @@ export class HUD {
   constructor({ xrApp, weaponSystem }) {
     this.xrApp = xrApp;
     this.weaponSystem = weaponSystem;
-    this.mode = 'select'; // 'select' | 'hud' | 'gameover'
+    this.mode = 'select'; // 'select' | 'formation' | 'hud' | 'gameover'
+    this._formationReady = false;
     this._lastDraw = '';
 
     this._buildCrosshair();
@@ -131,6 +132,15 @@ export class HUD {
 
   showWeaponSelect() {
     this.mode = 'select';
+  }
+
+  showFormation() {
+    this.mode = 'formation';
+    this._formationReady = false;
+  }
+
+  showFormationReady() {
+    this._formationReady = true;
   }
 
   showHUD() {
@@ -237,6 +247,8 @@ export class HUD {
     if (this.mode === 'select') {
       const def = weaponDef(this.weaponSystem.currentId);
       text = `SELECT:${def?.id}`;
+    } else if (this.mode === 'formation') {
+      text = `FORMATION:${this._formationReady}`;
     } else if (this.mode === 'gameover') {
       text = `OVER:${this._gameOverData?.score}:${this._gameOverData?.wave}`;
     } else {
@@ -296,6 +308,21 @@ export class HUD {
       ctx.fillText('Stick or B: browse', 20, 130);
       ctx.fillText('Right trigger: confirm', 20, 156);
       ctx.fillText('Stick-click: swap hands', 20, 182);
+    } else if (this.mode === 'formation') {
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('SQUAD FORMED', 20, 18);
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillStyle = '#eef6ff';
+      ctx.fillText('20 hostiles, lined up', 20, 56);
+      ctx.font = '17px sans-serif';
+      ctx.fillStyle = '#9fb4c4';
+      ctx.fillText('15 Soldiers + 5 Elites', 20, 84);
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillStyle = this._formationReady ? '#5be07a' : '#ffb347';
+      ctx.fillText(this._formationReady ? 'READY' : 'FORMING…', 20, 130);
+      ctx.font = '18px sans-serif';
+      ctx.fillStyle = '#9fb4c4';
+      ctx.fillText('Right trigger: BEGIN ASSAULT', 20, 168);
     } else if (this.mode === 'gameover') {
       ctx.font = 'bold 26px sans-serif';
       ctx.fillText('MISSION FAILED', 20, 18);
