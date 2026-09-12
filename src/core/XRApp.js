@@ -33,16 +33,28 @@ export class XRApp {
     this.renderer.xr.setReferenceSpaceType('local-floor');
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.3;
     container.appendChild(this.renderer.domElement);
 
-    // A subtle hemisphere + directional light: not physically driven by the
-    // real room (WebXR light estimation is inconsistent across runtimes),
-    // but tuned to sit well against typical indoor passthrough exposure.
-    this.scene.add(new THREE.HemisphereLight(0xddeeff, 0x1a1410, 0.9));
-    const key = new THREE.DirectionalLight(0xfff2df, 1.1);
+    // Not physically driven by the real room (WebXR light estimation is
+    // inconsistent across runtimes), so tuned to sit well against typical
+    // indoor passthrough exposure - and tuned generously bright rather than
+    // "reasonable-looking on a black test background", since materials
+    // that lean on real PBR shading (e.g. swat_elite_quest.glb's
+    // MeshPhysicalMaterials - metalness/roughness workflow, no baked-in
+    // brightness) read as a near-featureless dark silhouette once
+    // hemisphere+key intensity is on the low side, reported on-device as
+    // looking like "no material, solid black". A second, dimmer fill light
+    // from roughly the opposite side keeps the unlit side of a character
+    // from going fully black (approximating the bounce light a real room
+    // would provide, which a single directional light can't).
+    this.scene.add(new THREE.HemisphereLight(0xddeeff, 0x2a241c, 1.7));
+    const key = new THREE.DirectionalLight(0xfff2df, 2.1);
     key.position.set(1.5, 3, 1);
     this.scene.add(key);
+    const fill = new THREE.DirectionalLight(0xcfe0ff, 0.7);
+    fill.position.set(-1.8, 1.6, -1.2);
+    this.scene.add(fill);
 
     this.cameraRig = new THREE.Group();
     this.cameraRig.add(this.camera);

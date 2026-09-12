@@ -119,7 +119,11 @@ do all five in one session). Hold both triggers again to exit.
   the fully animated rank-and-file soldier; `swat_elite_quest.glb` (which
   ships as a static, un-animated Sketchfab mesh with its rifle fused into
   the geometry — see **Known simplifications**) is leaned into as a
-  tougher, more mechanically precise unit instead of fought against.
+  tougher, more mechanically precise unit instead of fought against. Since
+  it has no clips to drive real movement, `Soldier._updateProceduralMotion`
+  applies a small hand-authored bob/lean directly to its transform while
+  advancing (plus a subtler idle sway otherwise) so it doesn't read as a
+  motionless prop - reported on-device as "doesn't move at all" before this.
 - **Five weapons, each with a distinct feel** — Pistol, SMG, Assault Rifle,
   Shotgun (pellet spread + pump lockout), Sniper (bolt-action lockout, huge
   damage, tight spread) — `src/weapons/WeaponDefs.js` tunes fire rate,
@@ -210,6 +214,19 @@ building this without a live on-device preview or Quest Scene API access:
   wave (`EnemyManager._makeCoverPoints` / `recenter`), which soldiers path
   to and peek from. Swapping in real anchors later is a matter of feeding
   `EnemyManager.coverPoints` from the Scene API instead.
+- **`swat_elite_quest.glb` looked "black, no material" on-device** — its
+  materials are genuine textured `MeshPhysicalMaterial`s (confirmed by
+  loading it in isolation and dumping every material's map/color/metalness/
+  roughness - all present and correct, 512x512 textures decoded fine), so
+  this wasn't a loading failure. The actual cause was `XRApp.js`'s scene
+  lighting (`HemisphereLight`/`DirectionalLight` intensities) being tuned
+  low enough that a real PBR material - metalness/roughness workflow, no
+  brightness baked into the texture the way a flatter-shaded asset might
+  have - rendered as a near-featureless dark shape. Fixed by brightening
+  both lights and adding a second, dimmer fill light from roughly the
+  opposite side (approximating the bounce light a real room provides,
+  which one directional light can't) so the unlit side of a character
+  doesn't go fully black.
 - **Every weapon glb is itself a `SkinnedMesh`, with a real skeleton** —
   discovered the same way as the soldier scale bug (desktop preview + a
   scene-graph dump), and initially missed because a gun doesn't look like
